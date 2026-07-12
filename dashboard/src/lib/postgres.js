@@ -1,8 +1,16 @@
 const { runCommand } = require('./shell');
 const config = require('../config');
 
+function psqlBaseArgs() {
+  const args = [];
+  if (config.postgres.host) args.push('-h', config.postgres.host);
+  if (config.postgres.port) args.push('-p', String(config.postgres.port));
+  if (config.postgres.user) args.push('-U', config.postgres.user);
+  return args;
+}
+
 async function listDatabases() {
-  const result = await runCommand('psql', ['-l'], { timeout: 15000 });
+  const result = await runCommand('psql', [...psqlBaseArgs(), '-l'], { timeout: 15000 });
   if (!result.ok) {
     return { ok: false, error: result.error || result.stderr, databases: [] };
   }
@@ -20,19 +28,19 @@ async function listDatabases() {
 }
 
 async function createDatabase(dbname, username, password) {
-  const createDb = await runCommand('createdb', [dbname]);
+  const createDb = await runCommand('createdb', [...psqlBaseArgs(), dbname]);
   if (!createDb.ok && !createDb.stderr.includes('already exists')) {
     return { ok: false, error: createDb.error || createDb.stderr };
   }
 
   const createUserSql = `CREATE USER ${username} WITH PASSWORD '${password.replace(/'/g, "''")}';`;
-  const createUser = await runCommand('psql', ['-c', createUserSql]);
+  const createUser = await runCommand('psql', [...psqlBaseArgs(), '-c', createUserSql]);
   if (!createUser.ok && !createUser.stderr.includes('already exists')) {
     return { ok: false, error: createUser.error || createUser.stderr };
   }
 
   const grantSql = `GRANT ALL PRIVILEGES ON DATABASE ${dbname} TO ${username};`;
-  const grant = await runCommand('psql', ['-c', grantSql]);
+  const grant = await runCommand('psql', [...psqlBaseArgs(), '-c', grantSql]);
   if (!grant.ok) {
     return { ok: false, error: grant.error || grant.stderr };
   }
@@ -43,8 +51,8 @@ async function createDatabase(dbname, username, password) {
 
 async function deleteDatabase(dbname) {
   const terminateSql = `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${dbname.replace(/'/g, "''")}';`;
-  await runCommand('psql', ['-c', terminateSql]);
-  const drop = await runCommand('dropdb', [dbname]);
+  await runCommand('psql', [...psqlBaseArgs(), '-c', terminateSql]);
+  const drop = await runCommand('dropdb', [...psqlBaseArgs(), dbname]);
   return drop;
 }
 

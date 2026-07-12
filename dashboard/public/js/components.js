@@ -50,6 +50,10 @@ const UI = {
     return d.innerHTML;
   },
 
+  attr(str) {
+    return UI.escapeHtml(String(str)).replace(/"/g, '&quot;');
+  },
+
   badge(status) {
     const map = {
       online: 'online', up: 'up', active: 'active',

@@ -10,7 +10,7 @@
   <div class="app-shell">
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-brand">
-        <span class="brand-icon">⬡</span>
+        <span class="brand-mark"></span>
         <div>
           <strong>Phone Server</strong>
           <small id="sidebar-domain">aniketdutta.space</small>
@@ -150,7 +150,7 @@
           <div class="card">
             <div class="card-header">
               <h2>Domains</h2>
-              <button class="btn secondary small" onclick="App.verifyAllDomains()">Verify all</button>
+              <button type="button" id="verify-all-domains" class="btn secondary small">Verify all</button>
             </div>
             <div id="domains-list"></div>
           </div>
@@ -207,8 +207,8 @@
           <div class="card">
             <div class="card-header"><h2>Actions</h2></div>
             <div class="actions">
-              <button class="btn secondary" onclick="App.runBackup()">Run backup</button>
-              <button class="btn secondary" onclick="App.verifyAllDomains()">Verify DNS</button>
+              <button type="button" id="settings-backup" class="btn secondary">Run backup</button>
+              <button type="button" id="settings-verify-dns" class="btn secondary">Verify DNS</button>
               <a class="btn secondary" href="https://developers.cloudflare.com/cloudflare-one/" target="_blank" rel="noopener">Cloudflare docs</a>
             </div>
           </div>

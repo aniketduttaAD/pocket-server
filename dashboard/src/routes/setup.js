@@ -23,6 +23,9 @@ router.get('/status', async (req, res) => {
     const pgrep = await runCommand('pgrep', ['-f', 'cloudflared'], { timeout: 5000 });
     tunnelRunning = pgrep.ok;
   }
+  if (!tunnelRunning && pm2Result.processes.some((p) => p.name === 'tunnel' && p.status === 'online')) {
+    tunnelRunning = true;
+  }
 
   const defaultPassword = config.adminPassword === 'changeme';
   const weakSecret = config.sessionSecret.length < 32 || config.sessionSecret.includes('change');

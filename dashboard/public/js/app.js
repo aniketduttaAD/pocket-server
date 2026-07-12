@@ -61,6 +61,44 @@ const App = {
       await App.api('/api/auth/logout', { method: 'POST' });
       window.location.href = '/login.html';
     });
+
+    document.getElementById('verify-all-domains')?.addEventListener('click', () => App.verifyAllDomains());
+    document.getElementById('settings-backup')?.addEventListener('click', () => App.runBackup());
+    document.getElementById('settings-verify-dns')?.addEventListener('click', () => App.verifyAllDomains());
+  },
+
+  initActions() {
+    document.body.addEventListener('click', async (e) => {
+      const el = e.target.closest('[data-action]');
+      if (!el) return;
+
+      const { action, name, hostname, dbname, copy } = el.dataset;
+
+      if (action === 'copy' && copy) {
+        e.preventDefault();
+        await UI.copy(copy);
+        return;
+      }
+      if (action === 'service') {
+        e.preventDefault();
+        await App.serviceAction(el.dataset.op, name);
+        return;
+      }
+      if (action === 'project') {
+        e.preventDefault();
+        await App.projectAction(el.dataset.op, name);
+        return;
+      }
+      if (action === 'verify-domain' && hostname) {
+        e.preventDefault();
+        await App.verifyDomain(hostname);
+        return;
+      }
+      if (action === 'delete-db' && dbname) {
+        e.preventDefault();
+        await App.deleteDb(dbname);
+      }
+    });
   },
 
   initWizard() {
@@ -68,10 +106,10 @@ const App = {
     const showStep = (n) => {
       step = n;
       document.querySelectorAll('.wizard-step').forEach((s) => {
-        s.classList.toggle('active', parseInt(s.dataset.step) === n);
+        s.classList.toggle('active', parseInt(s.dataset.step, 10) === n);
       });
       document.querySelectorAll('.wizard-panel').forEach((p) => {
-        p.classList.toggle('active', parseInt(p.dataset.panel) === n);
+        p.classList.toggle('active', parseInt(p.dataset.panel, 10) === n);
       });
     };
     document.querySelectorAll('.wizard-next').forEach((btn) => {
@@ -123,20 +161,24 @@ const App = {
 
     document.getElementById('public-urls').innerHTML = data.publicUrls.length
       ? data.publicUrls.map((u) => `
-        <div class="dns-row">
-          <span>${UI.badge(u.status)} ${UI.badge(u.accessLevel)} <a href="${u.url}" target="_blank" rel="noopener">${UI.escapeHtml(u.hostname)}</a></span>
-          <button class="btn secondary small" onclick="UI.copy('${u.url}')">Copy</button>
+        <div class="url-row">
+          <div class="url-main">
+            ${UI.badge(u.status)}
+            ${UI.badge(u.accessLevel)}
+            <a href="${UI.attr(u.url)}" target="_blank" rel="noopener">${UI.escapeHtml(u.hostname)}</a>
+          </div>
+          <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(u.url)}">Copy</button>
         </div>`).join('')
       : UI.emptyState('No public URLs', 'Add domains in the Domains tab');
 
     document.getElementById('settings-info').innerHTML = `
-      <div class="dns-row"><span class="list-card-label">Environment</span><span>${data.security.isDev ? 'Development' : 'Production'}</span></div>
-      <div class="dns-row"><span class="list-card-label">Bind host</span><code>${UI.escapeHtml(data.security.bindHost)}</code></div>
-      <div class="dns-row"><span class="list-card-label">Trust proxy</span><span>${data.security.trustProxy ? 'Yes' : 'No'}</span></div>
-      <div class="dns-row"><span class="list-card-label">Base domain</span><span>${UI.escapeHtml(data.security.baseDomain)}</span></div>
-      <div class="dns-row"><span class="list-card-label">Project ports</span><span>${UI.escapeHtml(data.security.projectPortRange)}</span></div>
-      <div class="dns-row"><span class="list-card-label">Tunnel ID</span><span>${data.security.tunnelId || 'Not set'}</span></div>
-      <div class="dns-row"><span class="list-card-label">Security checks</span><span>${data.allChecksPass ? 'All pass' : 'Action needed'}</span></div>`;
+      <div class="kv-row"><span class="kv-label">Environment</span><span>${data.security.isDev ? 'Development' : 'Production'}</span></div>
+      <div class="kv-row"><span class="kv-label">Bind host</span><code>${UI.escapeHtml(data.security.bindHost)}</code></div>
+      <div class="kv-row"><span class="kv-label">Trust proxy</span><span>${data.security.trustProxy ? 'Yes' : 'No'}</span></div>
+      <div class="kv-row"><span class="kv-label">Base domain</span><span>${UI.escapeHtml(data.security.baseDomain)}</span></div>
+      <div class="kv-row"><span class="kv-label">Project ports</span><span>${UI.escapeHtml(data.security.projectPortRange)}</span></div>
+      <div class="kv-row"><span class="kv-label">Tunnel ID</span><span>${data.security.tunnelId || 'Not set'}</span></div>
+      <div class="kv-row"><span class="kv-label">Security checks</span><span>${data.allChecksPass ? 'All pass' : 'Action needed'}</span></div>`;
 
     return data;
   },
@@ -149,11 +191,12 @@ const App = {
       el.innerHTML = UI.emptyState('No health checks', 'Add projects with ports or domain routes');
       return;
     }
-    el.innerHTML = data.checks.map((c) => `
-      <div class="stat-card ${c.status === 'up' ? 'success' : 'warning'}">
-        <div class="label">${UI.escapeHtml(c.name)}</div>
-        <div class="value" style="font-size:1rem">${c.status}</div>
-      </div>`).join('');
+    el.innerHTML = `<div class="health-pills">${data.checks.map((c) => `
+      <div class="health-pill ${c.status === 'up' ? 'up' : 'down'}">
+        <span class="health-dot"></span>
+        <span class="health-name">${UI.escapeHtml(c.name)}</span>
+        <span class="health-status">${c.status}</span>
+      </div>`).join('')}</div>`;
   },
 
   async loadServices() {
@@ -178,11 +221,11 @@ const App = {
         <td>${s.memory ? Math.round(s.memory / 1024 / 1024) + ' MB' : '-'}</td>
         <td>${s.restarts ?? 0}</td>
         <td class="row-actions">
-          ${pub ? `<a class="btn small secondary" href="${pub}" target="_blank">Open</a>` : ''}
-          <button class="btn small secondary" onclick="App.serviceAction('restart','${s.name}')">Restart</button>
-          <button class="btn small secondary" onclick="App.serviceAction('stop','${s.name}')">Stop</button>
-          <button class="btn small secondary" onclick="App.loadLogs('${s.name}')">Logs</button>
-          <button class="btn small danger" onclick="App.serviceAction('delete','${s.name}')">Delete</button>
+          ${pub ? `<a class="btn small secondary" href="${UI.attr(pub)}" target="_blank" rel="noopener">Open</a>` : ''}
+          <button type="button" class="btn small secondary" data-action="service" data-op="restart" data-name="${UI.attr(s.name)}">Restart</button>
+          <button type="button" class="btn small secondary" data-action="service" data-op="stop" data-name="${UI.attr(s.name)}">Stop</button>
+          <button type="button" class="btn small secondary" data-action="service" data-op="logs" data-name="${UI.attr(s.name)}">Logs</button>
+          <button type="button" class="btn small danger" data-action="service" data-op="delete" data-name="${UI.attr(s.name)}">Delete</button>
         </td>
       </tr>`;
     }).join('');
@@ -191,9 +234,9 @@ const App = {
       <div class="list-card">
         <div class="list-card-row"><strong>${UI.escapeHtml(s.name)}</strong>${UI.badge(s.status)}</div>
         <div class="list-card-row"><span class="list-card-label">CPU / Memory</span><span>${s.cpu ?? '-'}% / ${s.memory ? Math.round(s.memory / 1024 / 1024) + ' MB' : '-'}</span></div>
-        <div class="row-actions" style="margin-top:0.5rem">
-          <button class="btn small secondary" onclick="App.serviceAction('restart','${s.name}')">Restart</button>
-          <button class="btn small secondary" onclick="App.loadLogs('${s.name}')">Logs</button>
+        <div class="row-actions">
+          <button type="button" class="btn small secondary" data-action="service" data-op="restart" data-name="${UI.attr(s.name)}">Restart</button>
+          <button type="button" class="btn small secondary" data-action="service" data-op="logs" data-name="${UI.attr(s.name)}">Logs</button>
         </div>
       </div>`).join('');
 
@@ -204,12 +247,17 @@ const App = {
     );
 
     sel.innerHTML = '<option value="">Select service…</option>' +
-      this.services.map((s) => `<option value="${s.name}">${s.name}</option>`).join('');
+      this.services.map((s) => `<option value="${UI.attr(s.name)}">${UI.escapeHtml(s.name)}</option>`).join('');
     pm2Sel.innerHTML = '<option value="">—</option>' +
-      this.services.map((s) => `<option value="${s.name}">${s.name}</option>`).join('');
+      this.services.map((s) => `<option value="${UI.attr(s.name)}">${UI.escapeHtml(s.name)}</option>`).join('');
   },
 
   async serviceAction(action, name) {
+    if (action === 'logs') {
+      await this.loadLogs(name);
+      document.getElementById('log-service-select').value = name;
+      return;
+    }
     if (action === 'delete' && !await UI.confirm('Delete service', `Remove PM2 service "${name}"?`)) return;
     try {
       if (action === 'delete') {
@@ -237,9 +285,10 @@ const App = {
     this.projects = data.projects || [];
     const el = document.getElementById('projects-list');
     const cwdSel = document.getElementById('project-cwd-select');
+    const baseDomain = document.getElementById('sidebar-domain')?.textContent || '';
 
     cwdSel.innerHTML = '<option value="">—</option>' +
-      this.projects.map((p) => `<option value="${UI.escapeHtml(p.dir)}">${p.name}</option>`).join('');
+      this.projects.map((p) => `<option value="${UI.attr(p.dir)}">${UI.escapeHtml(p.name)}</option>`).join('');
 
     if (!this.projects.length) {
       el.innerHTML = UI.emptyState('No projects yet', 'Use the wizard above to upload, clone, or create a project');
@@ -247,18 +296,19 @@ const App = {
     }
 
     const rows = this.projects.map((p) => {
-      const hostname = p.subdomain ? `${p.subdomain}.${document.getElementById('sidebar-domain')?.textContent || ''}` : `${p.name}.${document.getElementById('sidebar-domain')?.textContent || ''}`;
+      const hostname = p.subdomain ? `${p.subdomain}.${baseDomain}` : `${p.name}.${baseDomain}`;
+      const url = `https://${hostname}`;
       return `<tr>
       <td><strong>${UI.escapeHtml(p.name)}</strong></td>
       <td>${p.type}</td>
       <td>${p.port || '-'}</td>
-      <td>${p.port ? `<a href="https://${hostname}" target="_blank" rel="noopener">${hostname}</a>` : '-'}</td>
+      <td>${p.port ? `<a href="${UI.attr(url)}" target="_blank" rel="noopener">${UI.escapeHtml(hostname)}</a>` : '-'}</td>
       <td class="row-actions">
-        ${p.port ? `<button class="btn small secondary" onclick="UI.copy('https://${hostname}')">Copy URL</button>` : ''}
-        <button class="btn small secondary" onclick="App.projectAction('install','${p.name}')">Install</button>
-        <button class="btn small secondary" onclick="App.projectAction('build','${p.name}')">Build</button>
-        <button class="btn small" onclick="App.projectAction('start','${p.name}')">Start</button>
-        <button class="btn small danger" onclick="App.projectAction('delete','${p.name}')">Delete</button>
+        ${p.port ? `<button type="button" class="btn small secondary" data-action="copy" data-copy="${UI.attr(url)}">Copy URL</button>` : ''}
+        <button type="button" class="btn small secondary" data-action="project" data-op="install" data-name="${UI.attr(p.name)}">Install</button>
+        <button type="button" class="btn small secondary" data-action="project" data-op="build" data-name="${UI.attr(p.name)}">Build</button>
+        <button type="button" class="btn small" data-action="project" data-op="start" data-name="${UI.attr(p.name)}">Start</button>
+        <button type="button" class="btn small danger" data-action="project" data-op="delete" data-name="${UI.attr(p.name)}">Delete</button>
       </td>
     </tr>`;
     }).join('');
@@ -267,11 +317,10 @@ const App = {
       <div class="list-card">
         <div class="list-card-row"><strong>${UI.escapeHtml(p.name)}</strong><span>${p.type}</span></div>
         <div class="list-card-row"><span class="list-card-label">Port</span><span>${p.port || '-'}</span></div>
-        <div class="list-card-row"><span class="list-card-label">Access</span><span>Public app via Cloudflare</span></div>
-        <div class="row-actions" style="margin-top:0.5rem">
-          <button class="btn small" onclick="App.projectAction('start','${p.name}')">Start</button>
-          <button class="btn small secondary" onclick="App.projectAction('install','${p.name}')">Install</button>
-          <button class="btn small danger" onclick="App.projectAction('delete','${p.name}')">Delete</button>
+        <div class="row-actions">
+          <button type="button" class="btn small" data-action="project" data-op="start" data-name="${UI.attr(p.name)}">Start</button>
+          <button type="button" class="btn small secondary" data-action="project" data-op="install" data-name="${UI.attr(p.name)}">Install</button>
+          <button type="button" class="btn small danger" data-action="project" data-op="delete" data-name="${UI.attr(p.name)}">Delete</button>
         </div>
       </div>`).join('');
 
@@ -306,22 +355,26 @@ const App = {
       return;
     }
 
-    el.innerHTML = data.domains.map((d) => `
-      <div class="dns-card">
-        <div class="list-card-row">
-          <strong>${UI.escapeHtml(d.hostname)}</strong>
-          ${UI.badge(d.status)}
+    el.innerHTML = data.domains.map((d) => {
+      const target = d.target || data.target;
+      return `
+      <div class="domain-card">
+        <div class="domain-head">
+          <div>
+            <div class="domain-host">${UI.escapeHtml(d.hostname)}</div>
+            <div class="domain-badges">${UI.badge(d.status)} ${UI.badge(d.access_level || 'public')}</div>
+          </div>
+          <div class="row-actions">
+            <button type="button" class="btn small secondary" data-action="verify-domain" data-hostname="${UI.attr(d.hostname)}">Verify DNS</button>
+            <a class="btn small secondary" href="https://${UI.attr(d.hostname)}" target="_blank" rel="noopener">Open</a>
+          </div>
         </div>
-        <div class="dns-row"><span class="list-card-label">Access</span><span>${UI.badge(d.access_level || 'public')} ${d.access_level === 'admin' ? 'Cloudflare Access required' : 'Public app route + WAF'}</span></div>
-        <div class="dns-row"><span class="list-card-label">Mapping</span><span>${UI.escapeHtml(d.hostname)} → ${UI.escapeHtml(d.local_service || `http://127.0.0.1:${d.port}`)}</span></div>
-        <div class="dns-row"><span class="list-card-label">CNAME target</span><code>${UI.escapeHtml(d.target || data.target)}</code>
-          <button class="btn secondary small" onclick="UI.copy('${UI.escapeHtml(d.target || data.target)}')">Copy</button>
+        <div class="kv-row"><span class="kv-label">Mapping</span><span>${UI.escapeHtml(d.hostname)} → ${UI.escapeHtml(d.local_service || `http://127.0.0.1:${d.port}`)}</span></div>
+        <div class="kv-row"><span class="kv-label">CNAME target</span><code class="mono">${UI.escapeHtml(target)}</code>
+          <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(target)}">Copy</button>
         </div>
-        <div class="row-actions" style="margin-top:0.5rem">
-          <button class="btn small secondary" onclick="App.verifyDomain('${d.hostname}')">Verify DNS</button>
-          <a class="btn small secondary" href="https://${d.hostname}" target="_blank">Open</a>
-        </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   },
 
   async verifyDomain(hostname) {
@@ -329,6 +382,7 @@ const App = {
       await this.api(`/api/domains/verify/${encodeURIComponent(hostname)}`);
       UI.toast(`Verified ${hostname}`, 'success');
       await this.loadDomains();
+      await this.loadSetupStatus();
     } catch (e) {
       UI.toast(e.message, 'error');
     }
@@ -337,7 +391,7 @@ const App = {
   async verifyAllDomains() {
     try {
       await this.api('/api/domains/verify-all');
-      UI.toast('All domains verified', 'success');
+      UI.toast('Domains verified', 'success');
       await this.loadDomains();
       await this.loadSetupStatus();
     } catch (e) {
@@ -357,13 +411,18 @@ const App = {
     }
 
     el.innerHTML = rows.map((d) => `
-      <div class="dns-card">
-        <div class="list-card-row"><strong>${UI.escapeHtml(d.dbname)}</strong><span>${UI.escapeHtml(d.username)}</span></div>
-        <div class="copy-row">
-          <code class="code-block" style="max-height:60px;padding:0.5rem">${UI.escapeHtml(d.connection_url)}</code>
-          <button class="btn secondary small" onclick="UI.copy('${UI.escapeHtml(d.connection_url)}')">Copy</button>
+      <div class="domain-card">
+        <div class="domain-head">
+          <div>
+            <div class="domain-host">${UI.escapeHtml(d.dbname)}</div>
+            <div class="domain-badges"><span class="hint">${UI.escapeHtml(d.username)}</span></div>
+          </div>
+          <button type="button" class="btn small danger" data-action="delete-db" data-dbname="${UI.attr(d.dbname)}">Delete</button>
         </div>
-        <button class="btn small danger" style="margin-top:0.5rem" onclick="App.deleteDb('${d.dbname}')">Delete</button>
+        <div class="copy-row">
+          <code class="code-block mono">${UI.escapeHtml(d.connection_url)}</code>
+          <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(d.connection_url)}">Copy</button>
+        </div>
       </div>`).join('');
   },
 
@@ -381,7 +440,7 @@ const App = {
   async loadPresets() {
     const data = await this.api('/api/terminal/presets');
     document.getElementById('preset-select').innerHTML =
-      data.commands.map((c) => `<option value="${c}">${c}</option>`).join('');
+      data.commands.map((c) => `<option value="${UI.attr(c)}">${UI.escapeHtml(c)}</option>`).join('');
   },
 
   async runBackup() {
@@ -404,7 +463,6 @@ const App = {
         this.loadDomains(),
         this.loadDatabases(),
       ]);
-      UI.toast('Refreshed', 'success');
     } catch (e) {
       UI.toast(e.message, 'error');
     }
@@ -463,13 +521,18 @@ const App = {
         });
         document.getElementById('db-result').classList.remove('hidden');
         document.getElementById('db-connection').textContent = result.connectionUrl;
-        document.getElementById('copy-db-url').onclick = () => UI.copy(result.connectionUrl);
+        document.getElementById('copy-db-url').dataset.copy = result.connectionUrl;
         UI.toast('Database created', 'success');
         e.target.reset();
         await App.loadDatabases();
       } catch (err) {
         UI.toast(err.message, 'error');
       }
+    });
+
+    document.getElementById('copy-db-url')?.addEventListener('click', () => {
+      const url = document.getElementById('copy-db-url').dataset.copy;
+      if (url) UI.copy(url);
     });
 
     document.getElementById('terminal-form').addEventListener('submit', async (e) => {
@@ -527,10 +590,10 @@ const App = {
       return;
     }
     App.initNav();
+    App.initActions();
     App.initWizard();
     App.bindForms();
     await App.loadPresets();
-    await App.verifyAllDomains();
     await App.refreshAll();
   },
 };

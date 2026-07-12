@@ -76,11 +76,19 @@ router.get('/health/all', async (req, res) => {
   const domains = db.prepare('SELECT * FROM domains').all();
   const checks = [];
 
+  function healthUrl(name, port) {
+    const known = {
+      dash: `http://127.0.0.1:${port}/api/health`,
+      media: `http://127.0.0.1:${port}/health`,
+    };
+    return known[name] || `http://127.0.0.1:${port}`;
+  }
+
   const all = [
-    ...projects.map((p) => ({ name: p.name, url: `http://localhost:${p.port}` })),
+    ...projects.map((p) => ({ name: p.name, url: healthUrl(p.name, p.port) })),
     ...domains
       .filter((d) => d.port)
-      .map((d) => ({ name: d.service_name, url: `http://localhost:${d.port}` })),
+      .map((d) => ({ name: d.service_name, url: healthUrl(d.service_name, d.port) })),
   ];
 
   const seen = new Set();
@@ -93,7 +101,7 @@ router.get('/health/all', async (req, res) => {
       const timeout = setTimeout(() => controller.abort(), 3000);
       const r = await fetch(item.url, { signal: controller.signal });
       clearTimeout(timeout);
-      status = r.ok ? 'up' : 'down';
+      status = r.ok || r.status === 401 ? 'up' : 'down';
     } catch {
       status = 'down';
     }
