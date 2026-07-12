@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const { esc } = require('../lib/util');
+const { esc, formatSize } = require('../lib/util');
 const { isEditable, mimeType } = require('../lib/paths');
-const { isFfmpegAvailable } = require('../lib/transcode');
+const { isFfmpegAvailable, needsAudioTranscode } = require('../lib/transcode');
 const { icon } = require('./icons');
 const { pageShell } = require('./layout');
 
@@ -22,6 +22,7 @@ function viewerPage(abs, webPath, kind, siblings) {
   const nav = siblings || { prev: null, next: null };
   const transcodeUrl = `${webPath}?transcode=1`;
   const ffmpegOk = isFfmpegAvailable();
+  const transcodeAudio = kind === 'video' && ffmpegOk && needsAudioTranscode(abs);
 
   let viewerContent = '';
   let cdnStyles = [];
@@ -37,10 +38,34 @@ function viewerPage(abs, webPath, kind, siblings) {
       '/__assets/js/viewers/image-viewer.js',
     );
   } else if (kind === 'video') {
-    viewerContent = `<div class="viewer-stage viewer-media"><video id="viewer-video" playsinline controls preload="auto" src="${rawUrl}"></video></div>`;
-    cdnScripts.push('/__assets/js/viewers/media.js');
+    const videoSrc = transcodeAudio ? transcodeUrl : rawUrl;
+    viewerContent = `<div class="viewer-stage viewer-media">
+      <div class="viewer-media-player" id="viewer-media-player">
+        <video id="viewer-video" playsinline preload="metadata" src="${videoSrc}"></video>
+      </div>
+      <div class="viewer-media-bar" id="viewer-media-bar">
+        <span class="viewer-media-meta">${icon('video')}<span>${esc(ext.slice(1).toUpperCase() || 'Video')}</span></span>
+        <span class="viewer-media-meta">${formatSize(fileSize)}</span>
+        <div class="viewer-media-bar-end">
+          <span class="viewer-media-status" id="viewer-media-status"${transcodeAudio ? '' : ' hidden'}>AAC audio</span>
+          <button type="button" class="viewer-media-action" id="viewer-audio-fix" hidden>Fix audio</button>
+        </div>
+      </div>
+    </div>`;
+    cdnStyles.push('https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.css');
+    cdnScripts.push(
+      'https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.polyfilled.min.js',
+      '/__assets/js/viewers/media.js',
+    );
   } else if (kind === 'audio') {
-    viewerContent = `<div class="viewer-stage viewer-audio"><audio id="viewer-audio" controls preload="metadata" src="${rawUrl}"></audio></div>`;
+    viewerContent = `<div class="viewer-stage viewer-audio">
+      <div class="viewer-audio-card">
+        <div class="viewer-audio-art">${icon('audio')}</div>
+        <p class="viewer-audio-title">${esc(name)}</p>
+        <p class="viewer-audio-meta">${formatSize(fileSize)} · ${esc(ext.slice(1).toUpperCase() || 'Audio')}</p>
+        <audio id="viewer-audio" preload="metadata" src="${rawUrl}"></audio>
+      </div>
+    </div>`;
     cdnStyles.push('https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.css');
     cdnScripts.push(
       'https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.polyfilled.min.js',
@@ -94,6 +119,7 @@ function viewerPage(abs, webPath, kind, siblings) {
   data-dl="${esc(dlUrl)}"
   data-transcode="${esc(transcodeUrl)}"
   data-ffmpeg="${ffmpegOk ? '1' : '0'}"
+  data-transcode-audio="${transcodeAudio ? '1' : '0'}"
   data-kind="${kind}"
   data-mime="${esc(mime)}"
   data-ext="${esc(ext)}"

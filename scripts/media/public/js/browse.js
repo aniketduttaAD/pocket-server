@@ -1,6 +1,6 @@
-
 (function () {
-  var M = window.Media;
+  var M = window.MediaLib || window.Media;
+  if (!M || typeof M.$ !== 'function') return;
   var selected = new Set();
   var search = M.$('#search');
   var filterKind = M.$('#filter-kind');

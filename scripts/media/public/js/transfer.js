@@ -1,5 +1,5 @@
 (function () {
-  var M = window.Media;
+  var M = window.MediaLib || window.Media;
   if (!M || typeof M.$ !== 'function') return;
   var MAX_BLOB_DL = 250 * 1024 * 1024;
   var transfers = [];

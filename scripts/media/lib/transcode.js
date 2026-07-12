@@ -19,6 +19,25 @@ function isFfmpegAvailable() {
   return ffmpegAvailable;
 }
 
+const BROWSER_AUDIO_CODECS = new Set([
+  'aac', 'mp3', 'opus', 'vorbis', 'flac', 'alac',
+  'pcm_s16le', 'pcm_s24le', 'pcm_f32le', 'pcm_s16be',
+]);
+
+function needsAudioTranscode(abs) {
+  if (!isFfmpegAvailable()) return false;
+  try {
+    const out = execSync(
+      `ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 ${JSON.stringify(abs)}`,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+    const codec = out.trim().toLowerCase();
+    return !!codec && !BROWSER_AUDIO_CODECS.has(codec);
+  } catch {
+    return false;
+  }
+}
+
 function cachePath(abs, st) {
   const hash = crypto.createHash('sha256')
     .update(`${abs}:${st.mtimeMs}:${st.size}`)
@@ -187,4 +206,4 @@ function pipeFromJob(job, req, res) {
   });
 }
 
-module.exports = { isFfmpegAvailable, serveTranscoded };
+module.exports = { isFfmpegAvailable, needsAudioTranscode, serveTranscoded };

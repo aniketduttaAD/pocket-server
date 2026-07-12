@@ -1,5 +1,6 @@
 (function () {
-  var M = window.Media;
+  var M = window.MediaLib || window.Media;
+  if (!M || typeof M.$ !== 'function') return;
   var CHUNK_SIZE = 48 * 1024 * 1024;
   var CHUNK_THRESHOLD = 80 * 1024 * 1024;
   var webPath = M.$('#page-data')?.dataset.webPath || '/';

@@ -26,7 +26,7 @@
 
   root.addEventListener('click', function (e) {
     if (e.target.closest(
-      '.viewer-chrome, .viewer-controls, .viewer-edge, .viewer-ctl, .viewer-chrome-btn, video, audio, .plyr, #pdf-canvas-wrap, .cm-editor'
+      '.viewer-chrome, .viewer-controls, .viewer-edge, .viewer-ctl, .viewer-chrome-btn, .viewer-media-bar, .viewer-media-action, video, audio, .plyr, #pdf-canvas-wrap, .cm-editor'
     )) return;
     if (autoHide) toggleChrome();
   });

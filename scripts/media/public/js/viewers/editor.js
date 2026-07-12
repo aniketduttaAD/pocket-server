@@ -112,9 +112,9 @@ if (data && container) {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Save failed');
       content = text;
-      window.Media?.toast?.('Saved successfully');
+      (window.MediaLib || window.Media)?.toast?.('Saved successfully');
     } catch (e) {
-      window.Media?.toast?.(e.message || 'Save failed');
+      (window.MediaLib || window.Media)?.toast?.(e.message || 'Save failed');
     } finally {
       saveBtn.disabled = false;
     }

@@ -1,6 +1,10 @@
-window.Media = window.Media || {};
+(function (global) {
+  var M = global.MediaLib;
+  if (typeof M !== 'object' || M === null) M = global.MediaLib = {};
+  try {
+    if (typeof global.Media !== 'object' || global.Media === null) global.Media = M;
+  } catch (e) { /* window.Media may be read-only in some webviews */ }
 
-(function (M) {
   M.$ = function (s, r) { return (r || document).querySelector(s); };
   M.$$ = function (s, r) { return Array.from((r || document).querySelectorAll(s)); };
 
@@ -115,4 +119,4 @@ window.Media = window.Media || {};
     }
     if (M.downloadTracked) M.downloadTracked(url, name, size);
   });
-})(window.Media);
+})(window);
