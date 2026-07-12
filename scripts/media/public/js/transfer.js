@@ -1,5 +1,6 @@
 (function () {
   var M = window.Media;
+  if (!M || typeof M.$ !== 'function') return;
   var MAX_BLOB_DL = 250 * 1024 * 1024;
   var transfers = [];
 
@@ -68,7 +69,9 @@
     transfers.unshift(item);
     if (transfers.length > 80) transfers.length = 80;
     renderTransfers();
-    M.openSheet('#transfer-panel', '#transfer-backdrop');
+    if (!document.body.classList.contains('page-viewer')) {
+      M.openSheet('#transfer-panel', '#transfer-backdrop');
+    }
   }
 
   function setTransfer(id, patch) {

@@ -43,9 +43,9 @@ if (data && container) {
     fallback.readOnly = !editing;
     fallback.style.display = 'block';
     readOnly = !editing;
-    modeView?.classList.toggle('active', !editing);
-    modeEdit?.classList.toggle('active', editing);
-    if (saveBtn) saveBtn.style.display = editing ? '' : 'none';
+    modeView?.toggleAttribute('hidden', !editing);
+    modeEdit?.toggleAttribute('hidden', editing);
+    if (saveBtn) saveBtn.toggleAttribute('hidden', !editing);
   }
 
   function initEditor(editing) {
@@ -73,9 +73,9 @@ if (data && container) {
       parent: container,
     });
 
-    modeView?.classList.toggle('active', !editing);
-    modeEdit?.classList.toggle('active', editing);
-    if (saveBtn) saveBtn.style.display = editing ? '' : 'none';
+    modeView?.toggleAttribute('hidden', !editing);
+    modeEdit?.toggleAttribute('hidden', editing);
+    if (saveBtn) saveBtn.toggleAttribute('hidden', !editing);
   }
 
   async function loadContent() {
@@ -127,11 +127,6 @@ if (data && container) {
     }
   });
 
-  document.getElementById('info-toggle')?.addEventListener('click', function () {
-    const info = document.getElementById('viewer-info');
-    if (info) info.hidden = !info.hidden;
-  });
-
-  if (saveBtn) saveBtn.style.display = 'none';
+  if (saveBtn) saveBtn.toggleAttribute('hidden', true);
   loadContent();
 }

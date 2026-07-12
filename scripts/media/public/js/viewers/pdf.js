@@ -6,6 +6,7 @@ const data = document.getElementById('viewer-data');
 const rawUrl = data?.dataset.raw;
 const canvas = document.getElementById('pdf-canvas');
 const wrap = document.getElementById('pdf-canvas-wrap');
+const pageBox = document.getElementById('pdf-page');
 const pageInfo = document.getElementById('pdf-page-info');
 const zoomInfo = document.getElementById('pdf-zoom-info');
 
@@ -23,6 +24,30 @@ if (!rawUrl || !canvas) {
     if (zoomInfo) zoomInfo.textContent = Math.round(scale * 100) + '%';
   }
 
+  function centerCanvasIfFits() {
+    if (!wrap || !canvas) return;
+    const fits = canvas.offsetWidth <= wrap.clientWidth;
+    pageBox.style.margin = fits ? '0 auto' : '0';
+    pageBox.style.display = fits ? 'block' : 'inline-block';
+  }
+
+  function preserveScrollOnZoom(beforeW, beforeH) {
+    if (!wrap) return;
+    const afterW = canvas.offsetWidth;
+    const afterH = canvas.offsetHeight;
+    if (afterW <= wrap.clientWidth && afterH <= wrap.clientHeight) {
+      wrap.scrollLeft = 0;
+      wrap.scrollTop = 0;
+      return;
+    }
+    const cx = wrap.scrollLeft + wrap.clientWidth / 2;
+    const cy = wrap.scrollTop + wrap.clientHeight / 2;
+    const rx = beforeW ? cx / beforeW : 0.5;
+    const ry = beforeH ? cy / beforeH : 0.5;
+    wrap.scrollLeft = Math.max(0, rx * afterW - wrap.clientWidth / 2);
+    wrap.scrollTop = Math.max(0, ry * afterH - wrap.clientHeight / 2);
+  }
+
   async function renderPage(num) {
     if (!pdfDoc) return;
     if (renderTask) {
@@ -30,6 +55,9 @@ if (!rawUrl || !canvas) {
       try { renderTask.cancel(); } catch { /* ignore */ }
       return;
     }
+
+    const beforeW = canvas.offsetWidth;
+    const beforeH = canvas.offsetHeight;
 
     const page = await pdfDoc.getPage(num);
     const dpr = window.devicePixelRatio || 1;
@@ -51,8 +79,10 @@ if (!rawUrl || !canvas) {
       renderTask = null;
     }
 
-    if (pageInfo) pageInfo.textContent = `Page ${num} / ${pdfDoc.numPages}`;
+    if (pageInfo) pageInfo.textContent = `${num} / ${pdfDoc.numPages}`;
     updateZoomLabel();
+    centerCanvasIfFits();
+    preserveScrollOnZoom(beforeW, beforeH);
 
     if (renderQueued) {
       renderQueued = false;
@@ -66,7 +96,7 @@ if (!rawUrl || !canvas) {
 
   function fitWidth() {
     if (!pdfDoc || !pageWidth || !wrap) return;
-    const pad = 24;
+    const pad = 16;
     const width = wrap.clientWidth || wrap.getBoundingClientRect().width;
     if (width <= pad) return;
     scale = Math.max(0.25, Math.min((width - pad) / pageWidth, 4));
@@ -80,9 +110,7 @@ if (!rawUrl || !canvas) {
 
   try {
     pdfDoc = await pdfjsLib.getDocument(rawUrl).promise;
-    requestAnimationFrame(() => {
-      fitWidth();
-    });
+    requestAnimationFrame(() => fitWidth());
   } catch (e) {
     wrap.innerHTML = `<p class="pdf-error">Could not load PDF: ${e.message}</p>`;
   }
@@ -90,17 +118,21 @@ if (!rawUrl || !canvas) {
   document.getElementById('pdf-prev')?.addEventListener('click', () => {
     if (pageNum <= 1) return;
     pageNum--;
+    wrap.scrollLeft = 0;
+    wrap.scrollTop = 0;
     queueRender();
   });
 
   document.getElementById('pdf-next')?.addEventListener('click', () => {
     if (!pdfDoc || pageNum >= pdfDoc.numPages) return;
     pageNum++;
+    wrap.scrollLeft = 0;
+    wrap.scrollTop = 0;
     queueRender();
   });
 
-  document.getElementById('pdf-zoom-in')?.addEventListener('click', () => zoomBy(0.15));
-  document.getElementById('pdf-zoom-out')?.addEventListener('click', () => zoomBy(-0.15));
+  document.getElementById('pdf-zoom-in')?.addEventListener('click', () => zoomBy(0.2));
+  document.getElementById('pdf-zoom-out')?.addEventListener('click', () => zoomBy(-0.2));
   document.getElementById('pdf-fit')?.addEventListener('click', fitWidth);
 
   wrap?.addEventListener('wheel', (e) => {
@@ -137,5 +169,6 @@ if (!rawUrl || !canvas) {
 
   window.addEventListener('resize', () => {
     if (scale <= 1.05) fitWidth();
+    else centerCanvasIfFits();
   });
 }

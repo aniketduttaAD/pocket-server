@@ -105,7 +105,6 @@
 
 .toast {
   position: fixed;
-  bottom: calc(var(--bulk-h) + 0.75rem);
   left: 50%;
   transform: translateX(-50%) translateY(20px);
   background: var(--text);
@@ -119,6 +118,20 @@
   pointer-events: none;
   max-width: min(90vw, 400px);
   text-align: center;
+}
+
+body.page-browse .toast {
+  bottom: calc(var(--bottom-nav-h) + var(--bulk-h) + 0.75rem);
+}
+
+body.page-viewer .toast {
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  body.page-browse .toast {
+    bottom: calc(var(--bulk-h) + 0.75rem);
+  }
 }
 
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -200,6 +213,13 @@
 }
 
 .bulk-bar.open { transform: translateY(0); }
+
+@media (max-width: 767px) {
+  body.page-browse .bulk-bar.open {
+    bottom: var(--bottom-nav-h);
+  }
+}
+
 .bulk-count { font-size: 0.8125rem; font-weight: 600; flex: 1; }
 
 .transfer-panel {

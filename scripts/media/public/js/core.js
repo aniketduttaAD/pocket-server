@@ -90,11 +90,11 @@ window.Media = window.Media || {};
 
   M.$('#options-toggle')?.addEventListener('click', function (e) {
     e.preventDefault();
-    if (!M.openOptions()) M.toast('Options not available on this page');
+    M.openOptions();
   });
   M.$('#bottom-options')?.addEventListener('click', function (e) {
     e.preventDefault();
-    if (!M.openOptions()) M.toast('Options not available');
+    M.openOptions();
   });
   M.$('#filter-close')?.addEventListener('click', M.closeOptions);
   M.$('#options-backdrop')?.addEventListener('click', M.closeOptions);
@@ -115,4 +115,4 @@ window.Media = window.Media || {};
     }
     if (M.downloadTracked) M.downloadTracked(url, name, size);
   });
-})();
+})(window.Media);
