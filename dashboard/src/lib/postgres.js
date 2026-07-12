@@ -13,6 +13,27 @@ function psqlArgs() {
   return [...psqlBaseArgs(), '-d', config.postgres.database];
 }
 
+function buildConnectionUrls(username, password, dbname) {
+  const encPass = encodeURIComponent(password);
+  const localHost = config.postgres.host;
+  const localPort = config.postgres.port;
+  const remoteHost = config.database.publicHost;
+  const remotePort = config.database.publicPort;
+
+  const localConnectionUrl =
+    `postgresql://${username}:${encPass}@${localHost}:${localPort}/${dbname}`;
+  const remoteConnectionUrl =
+    `postgresql://${username}:${encPass}@${remoteHost}:${remotePort}/${dbname}?sslmode=prefer`;
+
+  return {
+    connectionUrl: remoteConnectionUrl,
+    remoteConnectionUrl,
+    localConnectionUrl,
+    host: remoteHost,
+    provider: 'postgres',
+  };
+}
+
 async function listDatabases() {
   const result = await runCommand('psql', [...psqlArgs(), '-l'], { timeout: 15000 });
   if (!result.ok) {
@@ -49,19 +70,36 @@ async function createDatabase(dbname, username, password) {
     return { ok: false, error: grant.error || grant.stderr };
   }
 
-  const url = `postgresql://${username}:${encodeURIComponent(password)}@${config.postgres.host}:${config.postgres.port}/${dbname}`;
-  return { ok: true, dbname, username, password, connectionUrl: url };
+  const schemaSql = `GRANT ALL ON SCHEMA public TO ${username};`;
+  await runCommand('psql', [...psqlArgs(), '-d', dbname, '-c', schemaSql]);
+
+  const urls = buildConnectionUrls(username, password, dbname);
+  return { ok: true, dbname, username, password, ...urls };
 }
 
-async function deleteDatabase(dbname) {
-  const terminateSql = `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${dbname.replace(/'/g, "''")}';`;
+async function deleteDatabase(dbname, username) {
+  const safeDb = dbname.replace(/'/g, "''");
+  const safeUser = username ? username.replace(/'/g, "''") : null;
+
+  const terminateSql = `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${safeDb}';`;
   await runCommand('psql', [...psqlArgs(), '-c', terminateSql]);
+
   const drop = await runCommand('dropdb', [...psqlBaseArgs(), dbname]);
-  return drop;
+  if (!drop.ok && !drop.stderr?.includes('does not exist')) {
+    return { ok: false, error: drop.error || drop.stderr };
+  }
+
+  if (safeUser) {
+    const dropRoleSql = `DROP ROLE IF EXISTS ${username};`;
+    await runCommand('psql', [...psqlArgs(), '-c', dropRoleSql]);
+  }
+
+  return { ok: true };
 }
 
 module.exports = {
   listDatabases,
   createDatabase,
   deleteDatabase,
+  buildConnectionUrls,
 };

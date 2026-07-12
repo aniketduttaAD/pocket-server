@@ -3,6 +3,7 @@ const fs = require('fs');
 const config = require('../config');
 const pm2 = require('../lib/pm2');
 const postgres = require('../lib/postgres');
+const cloudflared = require('../lib/cloudflared');
 const db = require('../lib/db');
 const { runCommand } = require('../lib/shell');
 const { nextAvailablePort, getUsedPorts } = require('../lib/ports');
@@ -14,6 +15,7 @@ router.get('/status', async (req, res) => {
   const pgResult = await postgres.listDatabases();
   const domains = db.prepare('SELECT * FROM domains ORDER BY hostname').all();
   const projects = db.prepare('SELECT * FROM projects ORDER BY name').all();
+  const storedDbs = db.prepare('SELECT * FROM databases ORDER BY created_at DESC').all();
 
   let tunnelRunning = false;
   const svCheck = await runCommand('sv', ['status', 'cloudflared'], { timeout: 5000 });
@@ -32,6 +34,7 @@ router.get('/status', async (req, res) => {
   const localhostBind = config.bindHost === '127.0.0.1' || config.bindHost === 'localhost';
   const tunnelConfigured = Boolean(config.tunnel.id);
   const cloudflaredConfigExists = fs.existsSync(config.paths.cloudflaredConfig);
+  const dbTunnelOk = cloudflared.dbTunnelConfigured();
 
   const checks = [
     {
@@ -70,13 +73,19 @@ router.get('/status', async (req, res) => {
       id: 'tunnel_running',
       label: 'Cloudflare tunnel running',
       ok: tunnelRunning,
-      hint: 'Run: sv start cloudflared',
+      hint: 'Run: pm2 restart tunnel',
     },
     {
       id: 'postgres',
-      label: 'PostgreSQL reachable',
+      label: 'PostgreSQL running on phone',
       ok: pgResult.ok,
-      hint: pgResult.error || 'Start PostgreSQL service',
+      hint: pgResult.error || 'Run: pg_ctl -D ~/postgres-data start',
+    },
+    {
+      id: 'db_tunnel',
+      label: 'Database tunnel configured',
+      ok: dbTunnelOk,
+      hint: `Create a database in the dashboard or add tcp ingress for ${config.database.publicHost}`,
     },
     {
       id: 'pm2',
@@ -101,7 +110,7 @@ router.get('/status', async (req, res) => {
       domainsActive,
       domainsTotal: domains.length,
       projectsTotal: projects.length,
-      databasesTotal: pgResult.databases?.length || 0,
+      databasesTotal: storedDbs.length,
       nextProjectPort: nextAvailablePort(),
     },
     security: {
@@ -109,6 +118,7 @@ router.get('/status', async (req, res) => {
       isDev: config.isDev,
       trustProxy: config.trustProxy,
       baseDomain: config.baseDomain,
+      dbPublicHost: config.database.publicHost,
       tunnelId: config.tunnel.id ? `${config.tunnel.id.slice(0, 8)}...` : null,
       projectPortRange: `${config.projects.portStart}-${config.projects.portEnd}`,
       usedPorts: Array.from(getUsedPorts()).sort((a, b) => a - b),

@@ -97,6 +97,9 @@ const db = {
         if (sql.includes('FROM domains WHERE hostname')) {
           return store.domains.find((d) => d.hostname === params[0]) || null;
         }
+        if (sql.includes('FROM databases WHERE dbname')) {
+          return store.databases.find((d) => d.dbname === params[0]) || null;
+        }
         if (sql.includes('SELECT id FROM projects WHERE name')) {
           const p = store.projects.find((x) => x.name === params[0]);
           return p ? { id: p.id } : null;
@@ -179,17 +182,23 @@ const db = {
           return {};
         }
         if (sql.includes('INSERT OR REPLACE INTO databases') || sql.includes('INSERT INTO databases')) {
-          const [dbname, username, password_enc, connection_url] = params;
+          const [dbname, username, password_enc, connection_url, local_connection_url, host, provider] = params;
           const existing = store.databases.find((d) => d.dbname === dbname);
+          const row = {
+            dbname,
+            username,
+            password_enc,
+            connection_url,
+            local_connection_url: local_connection_url || connection_url,
+            host: host || null,
+            provider: provider || 'postgres',
+          };
           if (existing) {
-            Object.assign(existing, { username, password_enc, connection_url });
+            Object.assign(existing, row);
           } else {
             store.databases.push({
               id: nextId(store.databases),
-              dbname,
-              username,
-              password_enc,
-              connection_url,
+              ...row,
               created_at: new Date().toISOString(),
             });
           }

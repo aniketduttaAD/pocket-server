@@ -419,12 +419,15 @@ ingress:
     service: http://127.0.0.1:3000
   - hostname: media.${BASE_DOMAIN}
     service: http://127.0.0.1:8080
+  - hostname: db.${BASE_DOMAIN}
+    service: tcp://127.0.0.1:5432
   - service: http_status:404
 EOF
 
     echo "Routing DNS..."
     "$cf_bin" tunnel route dns "$TUNNEL_NAME" "dash.${BASE_DOMAIN}" || true
     "$cf_bin" tunnel route dns "$TUNNEL_NAME" "media.${BASE_DOMAIN}" || true
+    "$cf_bin" tunnel route dns "$TUNNEL_NAME" "db.${BASE_DOMAIN}" || true
   else
     echo "Existing tunnel config found."
     TUNNEL_ID="$(basename "$(grep credentials-file "$cf_config" | awk '{print $2}')" .json)"
@@ -489,6 +492,9 @@ PGHOST=127.0.0.1
 PGPORT=5432
 PGUSER=${USER:-$(whoami)}
 PGDATABASE=postgres
+
+DB_PUBLIC_HOST=db.${BASE_DOMAIN}
+DB_PUBLIC_PORT=5432
 
 TRUST_PROXY=true
 RATE_LIMIT_LOGIN_MAX=5

@@ -1,6 +1,6 @@
 # Phone Server
 
-Turn a spare Android phone into a personal cloud server — admin dashboard, file manager, PostgreSQL, and unlimited app subdomains — accessible from **anywhere** via Cloudflare Tunnel, **not** from your local Wi‑Fi.
+Turn a spare Android phone into a personal cloud server — admin dashboard, file manager, **self-hosted PostgreSQL** with remote connection URLs, and unlimited app subdomains — accessible from **anywhere** via Cloudflare Tunnel.
 
 **Everything runs on Android (Termux).** One setup script — no Mac required.
 
@@ -21,7 +21,7 @@ cd ~/phone-server/scripts
 bash setup.sh
 ```
 
-The wizard installs Node.js, PM2, PostgreSQL, cloudflared (Termux package), media server, dashboard, and tunnel.
+The wizard installs Node.js, PM2, PostgreSQL, cloudflared, media server, dashboard, and tunnel. **Databases** run on the phone; the dashboard gives **remote** (`db.yourdomain`) and **local** (`127.0.0.1`) connection strings. See [docs/DATABASES.md](docs/DATABASES.md).
 
 **Prompts:** domain, admin password, media password, media folder (`~/storage/shared` recommended).
 
@@ -57,6 +57,7 @@ pm2 resurrect
 ## Documentation
 
 - [Phone setup](docs/PHONE_SETUP.md)
+- [Cloud databases (PostgreSQL)](docs/DATABASES.md)
 - [Cloudflare](docs/CLOUDFLARE.md)
 - [Security](docs/SECURITY.md)
 

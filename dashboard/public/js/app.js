@@ -405,25 +405,50 @@ const App = {
     const el = document.getElementById('databases-list');
     const rows = data.stored || [];
 
+    const statusEl = document.getElementById('db-provider-status');
+    const hostEl = document.getElementById('db-public-host');
+    if (hostEl && data.publicHost) hostEl.textContent = data.publicHost;
+    if (statusEl) {
+      if (data.live?.ok) {
+        statusEl.innerHTML = `PostgreSQL on this phone. Remote host: <code>${UI.escapeHtml(data.publicHost || 'db.yourdomain')}</code>${data.tunnelConfigured ? '' : ' — tunnel will be configured on first create'}`;
+      } else {
+        statusEl.textContent = data.live?.error || 'Start PostgreSQL: pg_ctl -D ~/postgres-data start';
+      }
+    }
+
     if (!rows.length) {
-      el.innerHTML = UI.emptyState('No databases', 'Create one above — connection URL will be shown once');
+      el.innerHTML = UI.emptyState('No databases yet', 'Create one above — you get remote + local connection strings');
       return;
     }
 
-    el.innerHTML = rows.map((d) => `
+    el.innerHTML = rows.map((d) => {
+      const remote = d.connection_url;
+      const local = d.local_connection_url || remote;
+      return `
       <div class="domain-card">
         <div class="domain-head">
           <div>
             <div class="domain-host">${UI.escapeHtml(d.dbname)}</div>
-            <div class="domain-badges"><span class="hint">${UI.escapeHtml(d.username)}</span></div>
+            <div class="domain-badges">
+              ${UI.badge('active')}
+              <span class="hint">${UI.escapeHtml(d.username)}</span>
+              ${d.host ? `<span class="hint">${UI.escapeHtml(d.host)}</span>` : ''}
+            </div>
           </div>
           <button type="button" class="btn small danger" data-action="delete-db" data-dbname="${UI.attr(d.dbname)}">Delete</button>
         </div>
+        <p class="hint">Remote (anywhere)</p>
         <div class="copy-row">
-          <code class="code-block mono">${UI.escapeHtml(d.connection_url)}</code>
-          <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(d.connection_url)}">Copy</button>
+          <code class="code-block mono">${UI.escapeHtml(remote)}</code>
+          <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(remote)}">Copy</button>
         </div>
-      </div>`).join('');
+        <p class="hint" style="margin-top:0.5rem">Local (phone apps)</p>
+        <div class="copy-row">
+          <code class="code-block mono">${UI.escapeHtml(local)}</code>
+          <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(local)}">Copy</button>
+        </div>
+      </div>`;
+    }).join('');
   },
 
   async deleteDb(dbname) {
@@ -519,9 +544,15 @@ const App = {
           method: 'POST',
           body: JSON.stringify(Object.fromEntries(fd.entries())),
         });
+        const remote = result.remoteConnectionUrl || result.connectionUrl;
+        const local = result.localConnectionUrl || remote;
         document.getElementById('db-result').classList.remove('hidden');
-        document.getElementById('db-connection').textContent = result.connectionUrl;
-        document.getElementById('copy-db-url').dataset.copy = result.connectionUrl;
+        document.getElementById('db-connection').textContent = remote;
+        document.getElementById('db-local-connection').textContent = local;
+        document.getElementById('db-env-block').textContent = `DATABASE_URL=${remote}`;
+        document.getElementById('copy-db-url').dataset.copy = remote;
+        document.getElementById('copy-db-local').dataset.copy = local;
+        document.getElementById('copy-db-env').dataset.copy = `DATABASE_URL=${remote}`;
         UI.toast('Database created', 'success');
         e.target.reset();
         await App.loadDatabases();
@@ -533,6 +564,16 @@ const App = {
     document.getElementById('copy-db-url')?.addEventListener('click', () => {
       const url = document.getElementById('copy-db-url').dataset.copy;
       if (url) UI.copy(url);
+    });
+
+    document.getElementById('copy-db-local')?.addEventListener('click', () => {
+      const url = document.getElementById('copy-db-local').dataset.copy;
+      if (url) UI.copy(url);
+    });
+
+    document.getElementById('copy-db-env')?.addEventListener('click', () => {
+      const block = document.getElementById('copy-db-env').dataset.copy;
+      if (block) UI.copy(block);
     });
 
     document.getElementById('terminal-form').addEventListener('submit', async (e) => {

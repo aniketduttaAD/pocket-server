@@ -33,6 +33,10 @@ module.exports = {
     id: process.env.TUNNEL_ID || '',
   },
   baseDomain: process.env.BASE_DOMAIN || 'aniketdutta.space',
+  database: {
+    publicHost: process.env.DB_PUBLIC_HOST || `db.${process.env.BASE_DOMAIN || 'aniketdutta.space'}`,
+    publicPort: parseInt(process.env.DB_PUBLIC_PORT || '5432', 10),
+  },
   postgres: {
     dataDir: process.env.PGDATA || path.join(homeDir, 'postgres-data'),
     host: process.env.PGHOST || '127.0.0.1',

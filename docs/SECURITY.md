@@ -55,7 +55,11 @@ Allowlisted presets only — no raw shell.
 
 ## PostgreSQL
 
-Never exposed via tunnel. Connection URLs use `127.0.0.1`.
+**Self-hosted on the phone** with remote and local connection strings. See [DATABASES.md](DATABASES.md).
+
+- Remote URL: `db.<domain>:5432` via Cloudflare TCP tunnel
+- Local URL: `127.0.0.1:5432` for apps on the phone
+- Postgres stays on localhost; not exposed on LAN
 
 ## SSH on phone
 

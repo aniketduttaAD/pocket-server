@@ -47,6 +47,35 @@ function parseYamlIngress(raw) {
   return { ingress };
 }
 
+function ingressEntryToRule(entry) {
+  if (!entry.hostname || entry.fallback) return null;
+  const svc = entry.service || '';
+  if (svc.startsWith('tcp://')) {
+    const m = svc.match(/:(\d+)\s*$/);
+    return {
+      hostname: entry.hostname,
+      tcp: true,
+      port: parseInt(m?.[1] || String(config.postgres.port), 10),
+      service: svc,
+    };
+  }
+  const m = svc.match(/:(\d+)\s*$/);
+  return {
+    hostname: entry.hostname,
+    tcp: false,
+    port: parseInt(m?.[1] || '80', 10),
+    service: svc,
+  };
+}
+
+function ruleToYaml(r) {
+  if (r.tcp) {
+    const port = r.port || config.postgres.port;
+    return `  - hostname: ${r.hostname}\n    service: tcp://127.0.0.1:${port}`;
+  }
+  return `  - hostname: ${r.hostname}\n    service: http://127.0.0.1:${r.port}`;
+}
+
 function writeIngressRules(rules) {
   const configPath = config.paths.cloudflaredConfig;
   const credPath = `${config.paths.home}/.cloudflared/${config.tunnel.id}.json`;
@@ -59,10 +88,7 @@ function writeIngressRules(rules) {
 
   const body = rules
     .filter((r) => !r.fallback)
-    .map(
-      (r) =>
-        `  - hostname: ${r.hostname}\n    service: http://127.0.0.1:${r.port}`
-    )
+    .map(ruleToYaml)
     .join('\n');
 
   const footer = '\n  - service: http_status:404\n';
@@ -81,17 +107,48 @@ async function routeDns(hostname) {
 }
 
 async function restartTunnel() {
+  const pm2 = await runCommand('pm2', ['restart', 'tunnel'], { timeout: 30000 });
+  if (pm2.ok) return pm2;
   return runCommand('sv', ['restart', 'cloudflared'], { timeout: 30000 });
 }
 
-async function addIngressRule(hostname, port) {
+function getRulesFromConfig() {
   const existing = readConfig();
-  const rules = existing.ingress.filter((r) => !r.fallback && r.hostname !== hostname);
-  rules.push({ hostname, port });
+  return existing.ingress.map(ingressEntryToRule).filter(Boolean);
+}
+
+async function addIngressRule(hostname, port) {
+  const rules = getRulesFromConfig().filter((r) => r.hostname !== hostname);
+  rules.push({ hostname, tcp: false, port });
   writeIngressRules(rules);
   const dnsResult = await routeDns(hostname);
   const restartResult = await restartTunnel();
   return { dnsResult, restartResult, rules };
+}
+
+async function ensureDbTunnel() {
+  const hostname = config.database.publicHost;
+  const port = config.postgres.port;
+  const rules = getRulesFromConfig();
+  const hasDb = rules.some((r) => r.hostname === hostname && r.tcp);
+
+  if (hasDb) {
+    return { ok: true, hostname, port, already: true };
+  }
+
+  const merged = rules.filter((r) => r.hostname !== hostname);
+  merged.push({ hostname, tcp: true, port });
+  writeIngressRules(merged);
+  const dnsResult = await routeDns(hostname);
+  const restartResult = await restartTunnel();
+
+  return { ok: true, hostname, port, dnsResult, restartResult };
+}
+
+function dbTunnelConfigured() {
+  const hostname = config.database.publicHost;
+  const rules = getRulesFromConfig();
+  return rules.some((r) => r.hostname === hostname && r.tcp);
 }
 
 module.exports = {
@@ -100,4 +157,6 @@ module.exports = {
   routeDns,
   restartTunnel,
   addIngressRule,
+  ensureDbTunnel,
+  dbTunnelConfigured,
 };
