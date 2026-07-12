@@ -1,6 +1,9 @@
 const { esc } = require('../lib/util');
 const { icon } = require('./icons');
 
+// Bust CSS/JS cache on every server restart so style/script changes take effect immediately.
+const ASSET_VER = Date.now().toString(36);
+
 const CSS_FILES = [
   '/__assets/css/tokens.css',
   '/__assets/css/layout.css',
@@ -12,12 +15,18 @@ const CSS_FILES = [
 
 const APP_ICON = '/__assets/icons/app.png';
 
+function v(url) {
+  // Skip CDN and already-versioned URLs; stamp local assets with restart version.
+  if (url.startsWith('http') || url.includes('?')) return url;
+  return `${url}?v=${ASSET_VER}`;
+}
+
 function cssLinks() {
-  return CSS_FILES.map((href) => `<link rel="stylesheet" href="${href}">`).join('\n');
+  return CSS_FILES.map((href) => `<link rel="stylesheet" href="${v(href)}">`).join('\n');
 }
 
 function jsScripts(scripts) {
-  return scripts.map((src) => `<script src="${src}" defer></script>`).join('\n');
+  return scripts.map((src) => `<script src="${v(src)}" defer></script>`).join('\n');
 }
 
 function transferPanelHtml() {
@@ -106,9 +115,9 @@ function pageShell(title, body, options = {}) {
     page = 'browse',
   } = options;
 
-  const cdnCss = cdnStyles.map((href) => `<link rel="stylesheet" href="${href}">`).join('\n');
-  const cdnJs = cdnScripts.map((src) => `<script src="${src}" defer></script>`).join('\n');
-  const modules = moduleScripts.map((src) => `<script type="module" src="${src}"></script>`).join('\n');
+  const cdnCss = cdnStyles.map((href) => `<link rel="stylesheet" href="${v(href)}">`).join('\n');
+  const cdnJs = cdnScripts.map((src) => `<script src="${v(src)}" defer></script>`).join('\n');
+  const modules = moduleScripts.map((src) => `<script type="module" src="${v(src)}"></script>`).join('\n');
   const navMode = page === 'viewer' ? 'viewer' : 'browse';
 
   return `<!DOCTYPE html>

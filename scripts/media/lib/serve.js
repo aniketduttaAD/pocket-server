@@ -57,7 +57,7 @@ function serveFile(req, res, abs, download) {
 }
 
 function serveAsset(req, res, assetPath) {
-  const rel = assetPath.replace(/^\/__assets\//, '').replace(/\.\./g, '');
+  const rel = assetPath.split('?')[0].replace(/^\/__assets\//, '').replace(/\.\./g, '');
   const abs = path.join(PUBLIC_DIR, rel);
   if (!abs.startsWith(PUBLIC_DIR)) {
     res.writeHead(403, { 'Content-Type': 'text/plain' });
