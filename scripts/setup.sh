@@ -341,12 +341,18 @@ phase_postgres() {
 phase_media() {
   step "Media server (media.${BASE_DOMAIN})"
   local media_dir="$HOME/media-server"
-  local media_script="$SCRIPT_DIR/media-server.js"
+  local media_src="$SCRIPT_DIR/media"
 
-  [ -f "$media_script" ] || die "Missing $media_script"
+  [ -d "$media_src" ] || die "Missing $media_src"
+  [ -f "$media_src/server.js" ] || die "Missing $media_src/server.js"
 
   mkdir -p "$media_dir"
-  cp "$media_script" "$media_dir/media-server.js"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$media_src/" "$media_dir/"
+  else
+    rm -rf "$media_dir"/*
+    cp -r "$media_src/." "$media_dir/"
+  fi
 
   cat > "$media_dir/env.sh" << EOF
 export MEDIA_HOST=127.0.0.1
@@ -363,7 +369,7 @@ EOF
   source "$media_dir/env.sh"
   set +a
 
-  ensure_pm2_running media "$media_dir/media-server.js" --name media --interpreter node
+  ensure_pm2_running media "$media_dir/server.js" --name media --interpreter node
   pm2 save
   echo "Media server running on 127.0.0.1:8080 (PM2: media)"
 }
