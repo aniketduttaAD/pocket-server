@@ -29,7 +29,7 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'sha256-NcFubtw9DfouAiTFetFYhIuK3B/BtdXSA018Z+nA+Wk='", "https://static.cloudflareinsights.com"],
-        scriptSrcAttr: false,
+        scriptSrcAttr: ["'none'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:'],
         connectSrc: ["'self'", "https://cloudflareinsights.com"],
