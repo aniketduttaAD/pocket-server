@@ -123,6 +123,55 @@
     });
   }
 
+  // When transcoding in real-time, the server streams chunked MP4 with no Content-Length.
+  // The browser can't seek, and duration keeps updating as more data arrives.
+  // We poll the transcode URL until it responds with Accept-Ranges (meaning it's cached),
+  // then swap the source so seeking works normally.
+  function pollForSeekable() {
+    if (!transcodeUrl) return;
+    var xhr = new XMLHttpRequest();
+    xhr.open('HEAD', transcodeUrl);
+    xhr.timeout = 5000;
+    var retry = function () { setTimeout(pollForSeekable, 12000); };
+    xhr.onload = function () {
+      var ranges = xhr.getResponseHeader('Accept-Ranges');
+      if (xhr.status === 200 && ranges && ranges.indexOf('bytes') >= 0) {
+        // Cached! Reload source so user can seek.
+        var wasTime = video.currentTime || 0;
+        var wasPlaying = !video.paused;
+        if (player && typeof player.source !== 'undefined') {
+          try {
+            player.source = { type: 'video', sources: [{ src: transcodeUrl, type: 'video/mp4' }] };
+          } catch (e) {
+            video.src = transcodeUrl;
+            video.load();
+          }
+        } else {
+          video.src = transcodeUrl;
+          video.load();
+        }
+        unmute(video);
+        video.addEventListener('loadedmetadata', function onMeta() {
+          video.removeEventListener('loadedmetadata', onMeta);
+          if (wasTime > 2) {
+            try { video.currentTime = wasTime; } catch (e) {}
+          }
+          if (wasPlaying) {
+            var p = video.play();
+            if (p && p.catch) p.catch(function () {});
+          }
+          setStatus('AAC', false);
+          if (M.toast) M.toast('Video ready — seeking enabled');
+        }, { once: true });
+      } else {
+        retry();
+      }
+    };
+    xhr.onerror = retry;
+    xhr.ontimeout = retry;
+    xhr.send();
+  }
+
   if (video) {
     unmute(video);
 
@@ -146,7 +195,11 @@
         player.on('ready', function () {
           unmute(video);
           bindAudioWatch();
-          if (transcodeFirst) setStatus('AAC', false);
+          if (transcodeFirst) {
+            setStatus('Converting…', false);
+            // Start polling — once transcode cache is ready the user can seek
+            setTimeout(pollForSeekable, 10000);
+          }
         });
 
         player.on('play', function () {
@@ -155,12 +208,18 @@
       } catch (e) {
         video.controls = true;
         bindAudioWatch();
-        if (transcodeFirst) setStatus('AAC', false);
+        if (transcodeFirst) {
+          setStatus('Converting…', false);
+          setTimeout(pollForSeekable, 10000);
+        }
       }
     } else {
       video.controls = true;
       bindAudioWatch();
-      if (transcodeFirst) setStatus('AAC', false);
+      if (transcodeFirst) {
+        setStatus('Converting…', false);
+        setTimeout(pollForSeekable, 10000);
+      }
     }
   }
 

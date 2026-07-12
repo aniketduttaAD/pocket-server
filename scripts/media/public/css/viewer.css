@@ -67,6 +67,16 @@ body.page-viewer {
   pointer-events: none;
 }
 
+/* Video dims chrome instead of hiding it fully */
+.viewer-immersive.chrome-dimmed .viewer-chrome {
+  opacity: 0.12;
+}
+
+.viewer-immersive.chrome-dimmed .viewer-chrome:hover,
+.viewer-immersive.chrome-dimmed .viewer-chrome:focus-within {
+  opacity: 1;
+}
+
 /* ── Header title ── */
 
 .viewer-chrome-title-wrap {
@@ -446,11 +456,12 @@ body.page-viewer {
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  padding: 0.5rem 0.65rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  gap: 0.3rem;
+  height: 56px;
+  padding: 0 0.75rem;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--surface);
   border-top: 1px solid var(--border);
-  backdrop-filter: blur(8px);
 }
 
 .viewer-controls--pdf {
@@ -462,11 +473,11 @@ body.page-viewer {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
-  height: 40px;
-  padding: 0 0.6rem;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 0.55rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 10px;
   background: var(--surface);
   color: var(--text);
   font-size: 0.875rem;
@@ -488,7 +499,7 @@ body.page-viewer {
 
 .viewer-ctl.icon-only {
   padding: 0;
-  width: 40px;
+  width: 36px;
 }
 
 .viewer-ctl.primary {
@@ -503,24 +514,26 @@ body.page-viewer {
 
 .viewer-ctl-label {
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
-  min-width: 48px;
+  min-width: 52px;
   text-align: center;
 }
 
 .viewer-ctl-sep {
   width: 1px;
-  height: 22px;
+  height: 20px;
   background: var(--border);
   margin: 0 0.1rem;
+  flex-shrink: 0;
 }
 
 /* ── Edge navigation ── */
 
 .viewer-edge {
   position: absolute;
-  top: 0;
+  /* default: span the whole viewport minus the chrome header */
+  top: calc(52px + env(safe-area-inset-top, 0px));
   bottom: 0;
   width: clamp(48px, 14vw, 68px);
   display: flex;
@@ -534,9 +547,20 @@ body.page-viewer {
   text-decoration: none;
 }
 
-.viewer-immersive--image .viewer-edge,
+/* Video: edge nav stops above Plyr controls (~80px) */
+.viewer-immersive--video .viewer-edge {
+  top: 0;
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+}
+
+/* PDF / text: edge nav stops above the viewer controls bar (~52px) */
 .viewer-immersive--pdf .viewer-edge,
-.viewer-immersive--text .viewer-edge,
+.viewer-immersive--text .viewer-edge {
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  color: var(--muted);
+}
+
+.viewer-immersive--image .viewer-edge,
 .viewer-immersive--audio .viewer-edge {
   color: var(--muted);
 }
@@ -559,13 +583,17 @@ body.page-viewer {
 
 .viewer-immersive:hover .viewer-edge,
 .viewer-immersive:focus-within .viewer-edge,
-.viewer-immersive.chrome-hidden .viewer-edge {
+.viewer-immersive.chrome-hidden .viewer-edge,
+.viewer-immersive.chrome-dimmed .viewer-edge {
   opacity: 1;
   pointer-events: auto;
 }
 
 .viewer-edge:hover {
-  opacity: 1;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.viewer-immersive--video .viewer-edge:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -601,13 +629,13 @@ body.page-viewer {
     display: none;
   }
 
-  .viewer-media-status {
-    bottom: 5rem;
-    font-size: 0.625rem;
+  .viewer-media-status,
+  .viewer-audio-fix-btn {
+    bottom: 5.25rem;
   }
 
-  .viewer-audio-fix-btn {
-    bottom: 5rem;
+  .viewer-media-status {
+    font-size: 0.625rem;
   }
 }
 

@@ -5,20 +5,28 @@
   var data = document.getElementById('viewer-data');
   var kind = data?.dataset.kind || '';
   var hideTimer = null;
-  var autoHide = kind === 'image' || kind === 'video';
+  // For video: dim the chrome (not hide) after inactivity. For image: hide fully.
+  var autoDim = kind === 'video';
+  var autoHide = kind === 'image';
 
   function showChrome() {
-    root.classList.remove('chrome-hidden');
-    if (!autoHide) return;
+    root.classList.remove('chrome-hidden', 'chrome-dimmed');
+    if (!autoDim && !autoHide) return;
     clearTimeout(hideTimer);
     hideTimer = setTimeout(function () {
-      root.classList.add('chrome-hidden');
-    }, 4000);
+      if (autoHide) root.classList.add('chrome-hidden');
+      else if (autoDim) root.classList.add('chrome-dimmed');
+    }, 3500);
   }
 
   function toggleChrome() {
-    if (root.classList.contains('chrome-hidden')) showChrome();
-    else root.classList.add('chrome-hidden');
+    var hidden = root.classList.contains('chrome-hidden') || root.classList.contains('chrome-dimmed');
+    if (hidden) showChrome();
+    else {
+      clearTimeout(hideTimer);
+      if (autoHide) root.classList.add('chrome-hidden');
+      else if (autoDim) root.classList.add('chrome-dimmed');
+    }
   }
 
   root.addEventListener('mousemove', showChrome, { passive: true });
@@ -28,7 +36,7 @@
     if (e.target.closest(
       '.viewer-chrome, .viewer-controls, .viewer-edge, .viewer-ctl, .viewer-chrome-btn, .viewer-audio-fix-btn, .viewer-media-status, video, audio, .plyr, #pdf-canvas-wrap, .cm-editor'
     )) return;
-    if (autoHide) toggleChrome();
+    if (autoDim || autoHide) toggleChrome();
   });
 
   document.addEventListener('keydown', function (e) {
@@ -70,5 +78,5 @@
     else if (dx < 0 && next) window.location.href = next.getAttribute('href');
   });
 
-  if (autoHide) showChrome();
+  if (autoDim || autoHide) showChrome();
 })();
