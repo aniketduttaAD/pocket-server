@@ -9,8 +9,12 @@ function psqlBaseArgs() {
   return args;
 }
 
+function psqlArgs() {
+  return [...psqlBaseArgs(), '-d', config.postgres.database];
+}
+
 async function listDatabases() {
-  const result = await runCommand('psql', [...psqlBaseArgs(), '-l'], { timeout: 15000 });
+  const result = await runCommand('psql', [...psqlArgs(), '-l'], { timeout: 15000 });
   if (!result.ok) {
     return { ok: false, error: result.error || result.stderr, databases: [] };
   }
@@ -34,13 +38,13 @@ async function createDatabase(dbname, username, password) {
   }
 
   const createUserSql = `CREATE USER ${username} WITH PASSWORD '${password.replace(/'/g, "''")}';`;
-  const createUser = await runCommand('psql', [...psqlBaseArgs(), '-c', createUserSql]);
+  const createUser = await runCommand('psql', [...psqlArgs(), '-c', createUserSql]);
   if (!createUser.ok && !createUser.stderr.includes('already exists')) {
     return { ok: false, error: createUser.error || createUser.stderr };
   }
 
   const grantSql = `GRANT ALL PRIVILEGES ON DATABASE ${dbname} TO ${username};`;
-  const grant = await runCommand('psql', [...psqlBaseArgs(), '-c', grantSql]);
+  const grant = await runCommand('psql', [...psqlArgs(), '-c', grantSql]);
   if (!grant.ok) {
     return { ok: false, error: grant.error || grant.stderr };
   }
@@ -51,7 +55,7 @@ async function createDatabase(dbname, username, password) {
 
 async function deleteDatabase(dbname) {
   const terminateSql = `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${dbname.replace(/'/g, "''")}';`;
-  await runCommand('psql', [...psqlBaseArgs(), '-c', terminateSql]);
+  await runCommand('psql', [...psqlArgs(), '-c', terminateSql]);
   const drop = await runCommand('dropdb', [...psqlBaseArgs(), dbname]);
   return drop;
 }

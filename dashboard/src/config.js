@@ -38,6 +38,7 @@ module.exports = {
     host: process.env.PGHOST || '127.0.0.1',
     port: parseInt(process.env.PGPORT || '5432', 10),
     user: process.env.PGUSER || null,
+    database: process.env.PGDATABASE || 'postgres',
   },
   projects: {
     portStart: parseInt(process.env.PROJECT_PORT_START || '3001', 10),
