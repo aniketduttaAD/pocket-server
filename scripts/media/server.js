@@ -20,6 +20,7 @@ const {
   handleUpload,
 } = require('./lib/upload');
 const { serveFile, serveAsset } = require('./lib/serve');
+const { serveTranscoded } = require('./lib/transcode');
 const { handleBulkDownload } = require('./lib/bulk');
 const { handleSave } = require('./lib/save');
 const { sendJson, readJsonBody } = require('./lib/util');
@@ -82,6 +83,7 @@ const server = http.createServer(async (req, res) => {
 
   const raw = u.searchParams.has('raw');
   const download = u.searchParams.has('download');
+  const transcode = u.searchParams.has('transcode');
   const isUpload = u.searchParams.has('upload');
   const isSave = u.searchParams.has('save');
 
@@ -124,6 +126,10 @@ const server = http.createServer(async (req, res) => {
       const webPath = u.pathname.endsWith('/') ? u.pathname : `${u.pathname}/`;
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(listDir(abs, webPath));
+    }
+
+    if (transcode) {
+      return serveTranscoded(req, res, abs);
     }
 
     if (raw || download) {
