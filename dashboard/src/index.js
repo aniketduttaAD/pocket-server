@@ -28,10 +28,11 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        scriptSrc: ["'self'", "'sha256-NcFubtw9DfouAiTFetFYhIuK3B/BtdXSA018Z+nA+Wk='", "https://static.cloudflareinsights.com"],
+        scriptSrcAttr: false,
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:'],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", "https://cloudflareinsights.com"],
         frameSrc: ["'none'"],
         objectSrc: ["'none'"],
       },

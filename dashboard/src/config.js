@@ -37,7 +37,7 @@ module.exports = {
     dataDir: process.env.PGDATA || path.join(homeDir, 'postgres-data'),
     host: process.env.PGHOST || '127.0.0.1',
     port: parseInt(process.env.PGPORT || '5432', 10),
-    user: process.env.PGUSER || process.env.USER || 'postgres',
+    user: process.env.PGUSER || null,
   },
   projects: {
     portStart: parseInt(process.env.PROJECT_PORT_START || '3001', 10),
