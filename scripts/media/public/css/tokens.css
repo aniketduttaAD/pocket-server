@@ -1,44 +1,51 @@
 :root {
-  --page: #f7f8fa;
-  --surface: #ffffff;
-  --surface-muted: #f9fafb;
-  --border: #e5e7eb;
-  --border-strong: #d1d5db;
-  --text: #0f172a;
-  --muted: #64748b;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-soft: #eff6ff;
-  --success: #059669;
-  --success-bg: #f0fdf4;
-  --danger: #dc2626;
-  --danger-bg: #fef2f2;
-  --warning: #d97706;
-  --radius: 14px;
-  --radius-sm: 9px;
-  --radius-xs: 6px;
+  --page: #f3f5f4;
+  --surface: #fafbfb;
+  --surface-muted: #f0f2f1;
+  --border: #e4e8e6;
+  --border-strong: #d0d7d3;
+  --text: #2c3330;
+  --muted: #6b7a72;
+  --primary: #5aab7a;
+  --primary-hover: #489766;
+  --primary-soft: #e8f3ec;
+  --accent: #dceee3;
+  --success: #489766;
+  --success-bg: #e8f3ec;
+  --danger: #c96a6a;
+  --danger-bg: #faf0f0;
+  --warning: #c9a227;
+  --radius: 16px;
+  --radius-sm: 11px;
+  --radius-xs: 8px;
   --font: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
-  --shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --shadow-sm: 0 1px 2px rgba(44, 51, 48, 0.04);
+  --shadow: 0 4px 20px rgba(44, 51, 48, 0.06);
   --bulk-h: 56px;
-  --topnav-h: 52px;
-  --fab-size: 52px;
-  --transition: 0.15s ease;
+  --topnav-h: 54px;
+  --bottom-nav-h: 58px;
+  --fab-size: 48px;
+  --transition: 0.18s ease;
+  --focus-ring: 0 0 0 3px rgba(90, 171, 122, 0.28);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --page: #0d1117;
-    --surface: #161b22;
-    --surface-muted: #1c2128;
-    --border: #21262d;
-    --border-strong: #30363d;
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --primary-soft: #1c2333;
-    --success-bg: rgba(5, 150, 105, 0.12);
-    --danger-bg: rgba(220, 38, 38, 0.12);
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    --page: #141816;
+    --surface: #1c211e;
+    --surface-muted: #222824;
+    --border: #2a322d;
+    --border-strong: #38403a;
+    --text: #e4ebe6;
+    --muted: #93a399;
+    --primary: #6ec492;
+    --primary-hover: #5aab7a;
+    --primary-soft: #1e2b23;
+    --accent: #243028;
+    --success-bg: rgba(110, 196, 146, 0.12);
+    --danger-bg: rgba(201, 106, 106, 0.12);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.25);
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    --focus-ring: 0 0 0 3px rgba(110, 196, 146, 0.25);
   }
 }

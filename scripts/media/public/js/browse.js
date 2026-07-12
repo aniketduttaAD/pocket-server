@@ -1,29 +1,24 @@
+
 (function () {
   var M = window.Media;
   var selected = new Set();
   var search = M.$('#search');
   var filterKind = M.$('#filter-kind');
-  var filterKindMobile = M.$('#filter-kind-mobile');
   var sortBy = M.$('#sort-by');
-  var sortByMobile = M.$('#sort-by-mobile');
   var bulkBar = M.$('#bulk-bar');
   var bulkCount = M.$('#bulk-count');
 
-  function getFilterKind() {
-    return (filterKind?.value || filterKindMobile?.value || 'all');
+  function openOptions() {
+    M.openSheet('#filter-sheet', '#filter-backdrop');
   }
 
-  function getSortBy() {
-    return (sortBy?.value || sortByMobile?.value || 'name-asc');
-  }
-
-  function syncFilters(from, to) {
-    if (from && to && from.value !== to.value) to.value = from.value;
+  function closeOptions() {
+    M.closeSheet('#filter-sheet', '#filter-backdrop');
   }
 
   function applyFilters() {
     var term = (search?.value || '').trim().toLowerCase();
-    var kind = getFilterKind();
+    var kind = filterKind?.value || 'all';
     M.$$('.media-item').forEach(function (el) {
       var name = (el.dataset.name || '').toLowerCase();
       var k = el.dataset.kind || '';
@@ -35,7 +30,7 @@
   }
 
   function sortVisible() {
-    var mode = getSortBy();
+    var mode = sortBy?.value || 'name-asc';
     M.$$('.gallery').forEach(function (gallery) {
       var items = M.$$('.media-item', gallery).filter(function (el) { return !el.classList.contains('hidden'); });
       items.sort(function (a, b) {
@@ -77,6 +72,7 @@
       if (el.dataset.path) selected.add(el.dataset.path);
     });
     updateBulk();
+    closeOptions();
   }
 
   var gallery = M.$('#media-gallery');
@@ -94,7 +90,6 @@
   }
 
   M.$('#select-all')?.addEventListener('click', selectAllVisible);
-  M.$('#select-all-mobile')?.addEventListener('click', selectAllVisible);
   M.$('#clear-select')?.addEventListener('click', function () { selected.clear(); updateBulk(); });
 
   M.$('#bulk-download')?.addEventListener('click', async function () {
@@ -150,29 +145,29 @@
   });
 
   search?.addEventListener('input', M.debounce(applyFilters, 150));
-  filterKind?.addEventListener('change', function () { syncFilters(filterKind, filterKindMobile); applyFilters(); });
-  filterKindMobile?.addEventListener('change', function () { syncFilters(filterKindMobile, filterKind); applyFilters(); });
-  sortBy?.addEventListener('change', function () { syncFilters(sortBy, sortByMobile); applyFilters(); });
-  sortByMobile?.addEventListener('change', function () { syncFilters(sortByMobile, sortBy); applyFilters(); });
+  filterKind?.addEventListener('change', applyFilters);
+  sortBy?.addEventListener('change', applyFilters);
 
   document.addEventListener('click', function (e) {
     var btn = e.target.closest('[data-view]');
     if (btn) setView(btn.dataset.view);
   });
 
-  M.$('#filter-toggle')?.addEventListener('click', function () {
-    M.openSheet('#filter-sheet', '#filter-backdrop');
+  M.$('#options-toggle')?.addEventListener('click', openOptions);
+  M.$('#options-upload')?.addEventListener('click', function () {
+    closeOptions();
+    if (M.openUpload) M.openUpload();
   });
-  M.$('#filter-close')?.addEventListener('click', function () {
-    M.closeSheet('#filter-sheet', '#filter-backdrop');
-  });
-  M.$('#filter-backdrop')?.addEventListener('click', function () {
-    M.closeSheet('#filter-sheet', '#filter-backdrop');
+  M.$('#filter-close')?.addEventListener('click', closeOptions);
+  M.$('#filter-backdrop')?.addEventListener('click', closeOptions);
+
+  M.$('#bottom-transfers')?.addEventListener('click', function () {
+    if (M.openTransferPanel) M.openTransferPanel();
   });
 
   function appendTile(result, file) {
-    var gallery = M.$('#media-gallery');
-    if (!gallery) {
+    var galleryEl = M.$('#media-gallery');
+    if (!galleryEl) {
       location.reload();
       return;
     }
@@ -199,10 +194,10 @@
       '<div class="tile-info"><span class="tile-name">' + (result.name || file.name) + '</span>' +
       '<span class="tile-meta">' + M.fmtBytes(sizeBytes) + '</span></div></a>' +
       '<div class="tile-actions">' +
-      '<a class="icon-btn" href="' + nextPath + '"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg></a>' +
-      '<button type="button" class="icon-btn" data-action="download" data-dl="' + nextPath + '?download=1" data-name="' + (result.name || file.name) + '" data-size="' + sizeBytes + '"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></button></div>';
+      '<a class="icon-btn" href="' + nextPath + '" aria-label="Open"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg></a>' +
+      '<button type="button" class="icon-btn" data-action="download" data-dl="' + nextPath + '?download=1" data-name="' + (result.name || file.name) + '" data-size="' + sizeBytes + '" aria-label="Download"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></button></div>';
 
-    gallery.insertBefore(article, gallery.firstChild);
+    galleryEl.insertBefore(article, galleryEl.firstChild);
 
     var empty = M.$('.empty-state');
     if (empty) empty.remove();

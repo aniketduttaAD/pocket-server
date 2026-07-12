@@ -106,34 +106,9 @@ function listDir(abs, webPath) {
       <h1>${esc(folderName)}</h1>
       <p class="page-stats">${folders.length} folders · ${mediaItems.length} files</p>
     </div>
-    ${parent ? `<a class="btn sm desktop-only" href="${parent}">${icon('arrowLeft')} Back</a>` : ''}
   </div>
   <div class="toolbar">
-    <div class="search-wrap">${icon('search')}<input class="search" id="search" type="search" placeholder="Search files…" autocomplete="off"></div>
-    <button type="button" class="btn primary sm desktop-only" id="upload-btn-desktop">${icon('upload')} Upload</button>
-    <button type="button" class="btn sm mobile-only" id="filter-toggle">${icon('filter')} Filter</button>
-  </div>
-  <div class="toolbar-row desktop-only" id="toolbar-filters">
-    <select class="select" id="filter-kind" aria-label="Filter by type">
-      <option value="all">All types</option>
-      <option value="image">Photos</option>
-      <option value="video">Videos</option>
-      <option value="audio">Audio</option>
-      <option value="pdf">PDF</option>
-      <option value="text">Documents</option>
-      <option value="file">Other</option>
-    </select>
-    <select class="select" id="sort-by" aria-label="Sort">
-      <option value="name-asc">Name A–Z</option>
-      <option value="name-desc">Name Z–A</option>
-      <option value="size-desc">Largest first</option>
-      <option value="date-desc">Newest first</option>
-    </select>
-    <div class="seg-control" role="group" aria-label="View mode">
-      <button type="button" class="btn sm active" data-view="grid" aria-pressed="true">${icon('grid')} Grid</button>
-      <button type="button" class="btn sm" data-view="list" aria-pressed="false">${icon('list')} List</button>
-    </div>
-    <button type="button" class="btn sm" id="select-all">${icon('check')} Select all</button>
+    <div class="search-wrap">${icon('search')}<input class="search" id="search" type="search" placeholder="Search…" autocomplete="off" aria-label="Search files"></div>
   </div>
 </section>`;
 
@@ -141,9 +116,8 @@ function listDir(abs, webPath) {
     body += `<div class="empty-state card"><div class="empty-icon">${icon('upload')}</div><p>This folder is empty</p><button type="button" class="btn primary" id="empty-upload-btn">Upload files</button></div></main>`;
     body += bulkBarHtml();
     body += uploadSheetHtml();
-    body += filterSheetHtml();
+    body += optionsSheetHtml();
     body += dragOverlayHtml();
-    body += fabHtml();
     return pageShell(folderName, body, {
       navTitle: folderName,
       showBack: !!parent,
@@ -184,9 +158,8 @@ function listDir(abs, webPath) {
   body += '</main>';
   body += bulkBarHtml();
   body += uploadSheetHtml();
-  body += filterSheetHtml();
+  body += optionsSheetHtml();
   body += dragOverlayHtml();
-  body += fabHtml();
 
   return pageShell(folderName, body, {
     navTitle: folderName,
@@ -231,16 +204,16 @@ function uploadSheetHtml() {
 </div>`;
 }
 
-function filterSheetHtml() {
+function optionsSheetHtml() {
   return `<div id="filter-backdrop" class="sheet-backdrop" aria-hidden="true"></div>
-<div id="filter-sheet" class="filter-sheet sheet" role="dialog" aria-label="Filters">
+<div id="filter-sheet" class="filter-sheet sheet" role="dialog" aria-label="View options">
   <div class="sheet-head">
-    <h3>${icon('filter')} Filters</h3>
+    <h3>${icon('filter')} Options</h3>
     <button type="button" class="btn ghost sm icon-only" id="filter-close" aria-label="Close">${icon('x')}</button>
   </div>
   <div class="filter-body">
-    <label class="field-label">Type</label>
-    <select class="select full" id="filter-kind-mobile" aria-label="Filter by type">
+    <label class="field-label" for="filter-kind">Type</label>
+    <select class="select full" id="filter-kind" aria-label="Filter by type">
       <option value="all">All types</option>
       <option value="image">Photos</option>
       <option value="video">Videos</option>
@@ -249,19 +222,20 @@ function filterSheetHtml() {
       <option value="text">Documents</option>
       <option value="file">Other</option>
     </select>
-    <label class="field-label">Sort</label>
-    <select class="select full" id="sort-by-mobile" aria-label="Sort">
+    <label class="field-label" for="sort-by">Sort</label>
+    <select class="select full" id="sort-by" aria-label="Sort">
       <option value="name-asc">Name A–Z</option>
       <option value="name-desc">Name Z–A</option>
       <option value="size-desc">Largest first</option>
       <option value="date-desc">Newest first</option>
     </select>
-    <label class="field-label">View</label>
-    <div class="seg-control full" role="group">
-      <button type="button" class="btn sm active" data-view="grid">${icon('grid')} Grid</button>
-      <button type="button" class="btn sm" data-view="list">${icon('list')} List</button>
+    <label class="field-label">Layout</label>
+    <div class="seg-control full" role="group" aria-label="View mode">
+      <button type="button" class="btn sm active" data-view="grid" aria-pressed="true">${icon('grid')} Grid</button>
+      <button type="button" class="btn sm" data-view="list" aria-pressed="false">${icon('list')} List</button>
     </div>
-    <button type="button" class="btn sm full" id="select-all-mobile">${icon('check')} Select all visible</button>
+    <button type="button" class="btn primary full" id="options-upload">${icon('upload')} Upload files</button>
+    <button type="button" class="btn sm full" id="select-all">${icon('check')} Select all visible</button>
   </div>
 </div>`;
 }
@@ -273,13 +247,6 @@ function dragOverlayHtml() {
     <p>Drop to upload</p>
   </div>
 </div>`;
-}
-
-function fabHtml() {
-  return `<button type="button" class="fab mobile-only" id="upload-fab" aria-label="Upload files">
-  ${icon('upload')}
-  <span class="fab-badge" id="upload-fab-badge"></span>
-</button>`;
 }
 
 module.exports = { listDir, mediaTile };

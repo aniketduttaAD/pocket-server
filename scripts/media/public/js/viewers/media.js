@@ -1,16 +1,59 @@
 (function () {
-  if (typeof Plyr === 'undefined') return;
-
+  var data = document.getElementById('viewer-data');
   var video = document.getElementById('viewer-video');
   var audio = document.getElementById('viewer-audio');
-  var el = video || audio;
-  if (!el) return;
+  var hint = document.getElementById('media-audio-hint');
 
-  new Plyr(el, {
-    controls: video
-      ? ['play-large', 'play', 'progress', 'current-time', 'duration', 'mute', 'volume', 'settings', 'pip', 'fullscreen']
-      : ['play', 'progress', 'current-time', 'duration', 'mute', 'volume'],
-    settings: video ? ['speed'] : [],
-    speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-  });
+  function showAudioHint() {
+    if (hint) hint.hidden = false;
+  }
+
+  if (video) {
+    video.muted = false;
+    video.defaultMuted = false;
+    video.volume = 1;
+    video.setAttribute('muted', 'false');
+
+    video.addEventListener('loadedmetadata', function () {
+      var mime = data?.dataset.mime || '';
+      if (mime && video.canPlayType(mime) === '') {
+        showAudioHint();
+      }
+    });
+
+    video.addEventListener('volumechange', function () {
+      if (video.muted) {
+        video.muted = false;
+        video.volume = 1;
+      }
+    });
+
+    video.addEventListener('playing', function () {
+      window.setTimeout(function () {
+        if (typeof video.webkitAudioDecodedByteCount === 'number'
+          && video.webkitAudioDecodedByteCount === 0
+          && video.currentTime > 1.5
+          && !video.paused) {
+          showAudioHint();
+        }
+      }, 2000);
+    });
+
+    video.addEventListener('error', function () {
+      showAudioHint();
+    });
+
+    document.addEventListener('click', function once() {
+      if (video.paused) {
+        video.play().catch(function () {});
+      }
+      document.removeEventListener('click', once);
+    }, { once: true });
+  }
+
+  if (audio && typeof Plyr !== 'undefined') {
+    new Plyr(audio, {
+      controls: ['play', 'progress', 'current-time', 'duration', 'mute', 'volume'],
+    });
+  }
 })();

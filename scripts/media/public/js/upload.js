@@ -15,7 +15,7 @@
   }
 
   function updateFabBadge() {
-    var badge = M.$('#upload-fab-badge');
+    var badge = M.$('#upload-queue-badge');
     var active = uploadQueue.filter(function (q) { return q.status === 'active'; }).length;
     if (!badge) return;
     if (active > 0) {
@@ -208,7 +208,7 @@
   M.uploadFiles = uploadFiles;
   M.openUpload = openUpload;
 
-  ['#upload-btn-desktop', '#upload-fab', '#empty-upload-btn'].forEach(function (sel) {
+  ['#empty-upload-btn', '#bottom-upload', '#upload-btn-desktop'].forEach(function (sel) {
     M.$(sel)?.addEventListener('click', openUpload);
   });
   M.$('#upload-close')?.addEventListener('click', closeUpload);
