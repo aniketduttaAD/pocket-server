@@ -58,8 +58,11 @@ step() {
 gen_secret() {
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -hex 32
-  else
+  elif command -v node >/dev/null 2>&1; then
     node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  else
+    od -An -tx1 -N32 /dev/urandom | tr -d ' \n'
+    echo
   fi
 }
 
@@ -120,7 +123,7 @@ phase_config() {
 phase_packages() {
   step "Installing system packages"
   pkg update -y && pkg upgrade -y
-  pkg install -y git nodejs-lts python postgresql openssh curl wget tmux go unzip termux-services
+  pkg install -y git nodejs-lts python postgresql openssh curl wget tmux go unzip termux-services openssl
 
   if ! command -v pm2 >/dev/null 2>&1; then
     echo "Installing PM2..."
@@ -419,8 +422,8 @@ main() {
   fi
 
   phase_welcome
-  phase_config
   phase_packages
+  phase_config
   phase_storage
   phase_postgres
   phase_filebrowser
