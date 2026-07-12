@@ -84,7 +84,7 @@ const App = {
       });
     });
     document.querySelectorAll('.wizard-prev').forEach((btn) => {
-      btn.addEventListener('click', () => showStep(Math.max(step - 1, 1));
+      btn.addEventListener('click', () => showStep(Math.max(step - 1, 1)));
     });
 
     document.querySelectorAll('.source-tab').forEach((tab) => {

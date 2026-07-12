@@ -71,6 +71,10 @@ app.use('/api/databases', requireAuth, databasesRoutes);
 app.use('/api/terminal', requireAuth, terminalRoutes);
 app.use('/api/setup', requireAuth, setupRoutes);
 
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end();
+});
+
 app.use('/css', express.static(path.join(__dirname, '..', 'public', 'css')));
 app.use('/js', express.static(path.join(__dirname, '..', 'public', 'js')));
 app.get('/login.html', (req, res) => {
