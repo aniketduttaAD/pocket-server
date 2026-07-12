@@ -183,14 +183,20 @@ function pipeFromJob(job, req, res) {
     return serveFile(req, res, job.cache, false);
   }
 
+  // Cancel any pending kill timer (client reconnected in time)
+  if (job._killTimer) {
+    clearTimeout(job._killTimer);
+    job._killTimer = null;
+  }
+
   const client = { req, res, ended: false };
   job.clients.push(client);
 
   if (!res.headersSent) {
     res.writeHead(200, {
       'Content-Type': 'video/mp4',
-      'Transfer-Encoding': 'chunked',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-store',
+      'X-Accel-Buffering': 'no',
     });
   }
 
@@ -198,10 +204,16 @@ function pipeFromJob(job, req, res) {
     client.ended = true;
     const idx = job.clients.indexOf(client);
     if (idx >= 0) job.clients.splice(idx, 1);
+    // Give a 45-second grace period before killing the transcode in case
+    // the client reconnects (e.g., network blip, H2 reset, background tab).
     if (!job.clients.length && !job.done && job.ff) {
-      job.ff.kill('SIGKILL');
-      activeJobs.delete(job.cache);
-      fs.unlink(job.partial, () => {});
+      job._killTimer = setTimeout(() => {
+        if (!job.clients.length && !job.done && job.ff) {
+          job.ff.kill('SIGKILL');
+          activeJobs.delete(job.cache);
+          fs.unlink(job.partial, () => {});
+        }
+      }, 45000);
     }
   });
 }

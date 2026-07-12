@@ -230,6 +230,41 @@
     });
   }
 
+  // Auto-retry the transcode stream on network errors (e.g. H2 reset, network change)
+  if (video && transcodeFirst) {
+    var retryCount = 0;
+    var retryTimer = null;
+    video.addEventListener('error', function () {
+      var err = video.error;
+      if (!err || !transcodeUrl) return;
+      // MEDIA_ERR_NETWORK (2) or MEDIA_ERR_SRC_NOT_SUPPORTED (4) → retry
+      if ((err.code === 2 || err.code === 4) && retryCount < 6) {
+        var delay = Math.min(3000 * Math.pow(1.8, retryCount), 30000);
+        retryCount++;
+        setStatus('Reconnecting…', false);
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(function () {
+          var wasTime = video.currentTime || 0;
+          video.src = transcodeUrl + '&_r=' + retryCount;
+          video.load();
+          unmute(video);
+          video.addEventListener('loadedmetadata', function onMeta() {
+            video.removeEventListener('loadedmetadata', onMeta);
+            if (wasTime > 2) { try { video.currentTime = wasTime; } catch (e) {} }
+            var p = video.play();
+            if (p && p.catch) p.catch(function () {});
+            setStatus('AAC', false);
+          }, { once: true });
+        }, delay);
+      }
+    });
+
+    video.addEventListener('playing', function () {
+      retryCount = 0;
+      clearTimeout(retryTimer);
+    });
+  }
+
   if (audio) {
     unmute(audio);
     if (typeof Plyr !== 'undefined') {
