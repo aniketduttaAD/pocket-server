@@ -1,6 +1,10 @@
 const App = {
   sourceType: 'upload',
   autoRefreshTimer: null,
+  dbPollTimer: null,
+  activeTab: 'overview',
+  lastDbSignature: '',
+  lastNgrokEndpoint: null,
   projects: [],
   services: [],
 
@@ -52,6 +56,9 @@ const App = {
         const panel = document.getElementById(`tab-${btn.dataset.tab}`);
         if (panel) panel.classList.add('active');
         App.setPageTitle(btn.dataset.tab);
+        App.activeTab = btn.dataset.tab;
+        App.syncDbPolling();
+        if (App.activeTab === 'databases') App.loadDatabases();
         sidebar?.classList.remove('open');
         overlay?.classList.add('hidden');
       });
@@ -66,6 +73,24 @@ const App = {
     document.getElementById('verify-all-domains')?.addEventListener('click', () => App.verifyAllDomains());
     document.getElementById('settings-backup')?.addEventListener('click', () => App.runBackup());
     document.getElementById('settings-verify-dns')?.addEventListener('click', () => App.verifyAllDomains());
+  },
+
+  syncDbPolling() {
+    clearInterval(App.dbPollTimer);
+    if (App.activeTab !== 'databases') return;
+    App.dbPollTimer = setInterval(() => App.loadDatabases({ silent: true }), 20000);
+  },
+
+  dbSignature(data) {
+    return JSON.stringify({
+      ngrok: data.ngrok,
+      rows: (data.stored || []).map((d) => ({
+        dbname: d.dbname,
+        connection_url: d.connection_url,
+        local_connection_url: d.local_connection_url,
+        remote_error: d.remote_error,
+      })),
+    });
   },
 
   initActions() {
@@ -401,13 +426,25 @@ const App = {
     }
   },
 
-  async loadDatabases() {
+  async loadDatabases(options = {}) {
+    const { silent = false } = options;
     const el = document.getElementById('databases-list');
     if (!el) return;
 
     try {
-      UI.showLoading('databases-list');
+      if (!silent) UI.showLoading('databases-list');
       const data = await this.api('/api/databases');
+      const signature = App.dbSignature(data);
+
+      if (silent && signature === App.lastDbSignature) return;
+
+      const endpoint = data.ngrok?.ok ? `${data.ngrok.host}:${data.ngrok.port}` : null;
+      if (silent && endpoint && App.lastNgrokEndpoint && App.lastNgrokEndpoint !== endpoint) {
+        UI.toast('ngrok restarted — remote URLs updated', 'success');
+      }
+      App.lastNgrokEndpoint = endpoint;
+      App.lastDbSignature = signature;
+
       const rows = data.stored || [];
       const justCreated = (() => {
         try {
@@ -421,10 +458,12 @@ const App = {
       if (statusEl) {
         if (!data.live?.ok) {
           statusEl.textContent = data.live?.error || 'Start PostgreSQL: pg_ctl -D ~/postgres-data start';
-        } else if (data.remoteMode === 'tailscale') {
-          statusEl.innerHTML = `PostgreSQL on this phone. Remote via <strong>Tailscale</strong> at <code>${UI.escapeHtml(data.publicHost || '')}</code> — connect directly from Mac (no cloudflared).`;
+        } else if (data.remoteMode === 'ngrok' && data.ngrok?.ok) {
+          statusEl.innerHTML = `PostgreSQL on this phone. Remote via ngrok at <code>${UI.escapeHtml(data.ngrok.host)}:${data.ngrok.port}</code> — URLs auto-update when ngrok restarts.`;
+        } else if (data.remoteMode === 'ngrok') {
+          statusEl.innerHTML = `PostgreSQL running. Start ngrok: <code>bash ~/pocket-server/scripts/setup-ngrok.sh</code>`;
         } else {
-          statusEl.innerHTML = `PostgreSQL on this phone. Remote via Cloudflare — run <code>cloudflared access tcp</code> on your Mac, or set <code>DB_PUBLIC_HOST</code> to your Tailscale IP.`;
+          statusEl.innerHTML = `Set <code>NGROK_ENABLED=true</code> in ~/dash/.env for standalone remote Postgres URLs.`;
         }
       }
 
@@ -445,11 +484,12 @@ const App = {
             <div class="domain-badges db-meta">
               ${UI.badge('active')}
               <span class="hint">${UI.escapeHtml(d.username)}</span>
-              ${d.host ? `<span class="hint">${UI.escapeHtml(d.host)}</span>` : ''}
+              ${d.host ? `<span class="hint">${UI.escapeHtml(d.remote_port ? `${d.host}:${d.remote_port}` : d.host)}</span>` : ''}
             </div>
           </div>
           <button type="button" class="btn small danger" data-action="delete-db" data-dbname="${UI.attr(d.dbname)}">Delete</button>
         </div>
+        ${d.remote_error ? `<p class="hint" style="color:#b45309">Remote URL unavailable: ${UI.escapeHtml(d.remote_error)}</p>` : ''}
         ${showPassword ? `
         <div class="db-secret">
           <div class="db-field-main">
@@ -460,7 +500,7 @@ const App = {
         </div>` : ''}
         <div class="db-field">
           <div class="db-field-main">
-            <p class="db-field-label">Remote (Mac / Tailscale)</p>
+            <p class="db-field-label">Remote (standalone — Mac / Vercel / anywhere)</p>
             <code class="db-value">${UI.escapeHtml(remote)}</code>
           </div>
           <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(remote)}">Copy</button>
@@ -646,6 +686,7 @@ const App = {
     App.bindForms();
     await App.loadPresets();
     await App.refreshAll();
+    App.syncDbPolling();
   },
 };
 

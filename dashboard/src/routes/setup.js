@@ -3,7 +3,7 @@ const fs = require('fs');
 const config = require('../config');
 const pm2 = require('../lib/pm2');
 const postgres = require('../lib/postgres');
-const cloudflared = require('../lib/cloudflared');
+const ngrok = require('../lib/ngrok');
 const db = require('../lib/db');
 const { runCommand } = require('../lib/shell');
 const { nextAvailablePort, getUsedPorts } = require('../lib/ports');
@@ -34,8 +34,8 @@ router.get('/status', async (req, res) => {
   const localhostBind = config.bindHost === '127.0.0.1' || config.bindHost === 'localhost';
   const tunnelConfigured = Boolean(config.tunnel.id);
   const cloudflaredConfigExists = fs.existsSync(config.paths.cloudflaredConfig);
-  const dbTunnelOk = cloudflared.dbTunnelConfigured();
-  const tailscaleDb = config.database.remoteMode === 'tailscale';
+  const ngrokStatus = await ngrok.getStatus();
+  const dbRemoteOk = ngrok.remoteReady(ngrokStatus);
 
   const checks = [
     {
@@ -84,11 +84,11 @@ router.get('/status', async (req, res) => {
     },
     {
       id: 'db_tunnel',
-      label: tailscaleDb ? 'Database remote via Tailscale' : 'Database tunnel configured',
-      ok: tailscaleDb || dbTunnelOk,
-      hint: tailscaleDb
-        ? `Remote URLs use ${config.database.publicHost} — ensure Postgres listens on Tailscale (run configure-postgres-tailscale.sh)`
-        : `Create a database in the dashboard or add tcp ingress for ${config.database.publicHost}`,
+      label: 'Postgres remote tunnel (ngrok)',
+      ok: dbRemoteOk,
+      hint: dbRemoteOk
+        ? `Public TCP: ${ngrokStatus.host}:${ngrokStatus.port}`
+        : ngrokStatus.error || 'Run: bash ~/pocket-server/scripts/setup-ngrok.sh',
     },
     {
       id: 'pm2',

@@ -1,5 +1,6 @@
 const { runCommand } = require('./shell');
 const config = require('../config');
+const ngrok = require('./ngrok');
 
 function psqlBaseArgs() {
   const args = [];
@@ -13,23 +14,40 @@ function psqlArgs() {
   return [...psqlBaseArgs(), '-d', config.postgres.database];
 }
 
-function buildConnectionUrls(username, password, dbname) {
+async function resolveRemoteEndpoint() {
+  if (config.database.remoteMode === 'ngrok') {
+    const endpoint = await ngrok.getTcpEndpoint();
+    if (endpoint.ok) {
+      return { host: endpoint.host, port: endpoint.port, mode: 'ngrok' };
+    }
+    throw new Error(endpoint.error || 'ngrok TCP tunnel is not running');
+  }
+
+  return {
+    host: config.database.publicHost,
+    port: config.database.publicPort,
+    mode: config.database.remoteMode,
+  };
+}
+
+async function buildConnectionUrls(username, password, dbname) {
   const encPass = encodeURIComponent(password);
   const localHost = config.postgres.host;
   const localPort = config.postgres.port;
-  const remoteHost = config.database.publicHost;
-  const remotePort = config.database.publicPort;
+  const remote = await resolveRemoteEndpoint();
 
   const localConnectionUrl =
     `postgresql://${username}:${encPass}@${localHost}:${localPort}/${dbname}`;
   const remoteConnectionUrl =
-    `postgresql://${username}:${encPass}@${remoteHost}:${remotePort}/${dbname}?sslmode=prefer`;
+    `postgresql://${username}:${encPass}@${remote.host}:${remote.port}/${dbname}?sslmode=prefer`;
 
   return {
     connectionUrl: remoteConnectionUrl,
     remoteConnectionUrl,
     localConnectionUrl,
-    host: remoteHost,
+    host: remote.host,
+    remotePort: remote.port,
+    remoteMode: remote.mode,
     provider: 'postgres',
   };
 }
@@ -73,7 +91,7 @@ async function createDatabase(dbname, username, password) {
   const schemaSql = `GRANT ALL ON SCHEMA public TO ${username};`;
   await runCommand('psql', [...psqlArgs(), '-d', dbname, '-c', schemaSql]);
 
-  const urls = buildConnectionUrls(username, password, dbname);
+  const urls = await buildConnectionUrls(username, password, dbname);
   return { ok: true, dbname, username, password, ...urls };
 }
 
@@ -102,4 +120,5 @@ module.exports = {
   createDatabase,
   deleteDatabase,
   buildConnectionUrls,
+  resolveRemoteEndpoint,
 };

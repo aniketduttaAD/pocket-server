@@ -11,7 +11,18 @@ function isTailscaleHost(host) {
 }
 
 const baseDomain = process.env.BASE_DOMAIN || 'aniketdutta.space';
-const dbPublicHost = process.env.DB_PUBLIC_HOST || `db.${baseDomain}`;
+const ngrokEnabled = process.env.NGROK_ENABLED === 'true' || Boolean(process.env.NGROK_AUTHTOKEN);
+const ngrokTcpHost = process.env.NGROK_TCP_HOST || '';
+const ngrokTcpPort = parseInt(process.env.NGROK_TCP_PORT || '0', 10) || null;
+
+function resolveRemoteMode() {
+  if (ngrokEnabled) return 'ngrok';
+  if (isTailscaleHost(process.env.DB_PUBLIC_HOST || '')) return 'tailscale';
+  return 'cloudflare';
+}
+
+const dbPublicHost = ngrokTcpHost || process.env.DB_PUBLIC_HOST || `db.${baseDomain}`;
+const dbPublicPort = ngrokTcpPort || parseInt(process.env.DB_PUBLIC_PORT || '5432', 10);
 
 module.exports = {
   port: parseInt(process.env.PORT || '3000', 10),
@@ -41,10 +52,18 @@ module.exports = {
     id: process.env.TUNNEL_ID || '',
   },
   baseDomain,
+  ngrok: {
+    enabled: ngrokEnabled,
+    authtoken: process.env.NGROK_AUTHTOKEN || '',
+    bin: process.env.NGROK_BIN || path.join(homeDir, 'ngrok'),
+    apiUrl: process.env.NGROK_API_URL || 'http://127.0.0.1:4040',
+    tcpHost: ngrokTcpHost,
+    tcpPort: ngrokTcpPort,
+  },
   database: {
     publicHost: dbPublicHost,
-    publicPort: parseInt(process.env.DB_PUBLIC_PORT || '5432', 10),
-    remoteMode: isTailscaleHost(dbPublicHost) ? 'tailscale' : 'cloudflare',
+    publicPort: dbPublicPort,
+    remoteMode: resolveRemoteMode(),
   },
   postgres: {
     dataDir: process.env.PGDATA || path.join(homeDir, 'postgres-data'),

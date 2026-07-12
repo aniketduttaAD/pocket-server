@@ -1,6 +1,6 @@
 # Phone Server
 
-Turn a spare Android phone into a personal cloud server — admin dashboard, file manager, **self-hosted PostgreSQL** with remote connection URLs, and unlimited app subdomains — accessible from **anywhere** via Cloudflare Tunnel.
+Turn a spare Android phone into a personal cloud server — admin dashboard, file manager, **self-hosted PostgreSQL** with standalone remote URLs (via ngrok), and unlimited app subdomains — accessible from **anywhere** via Cloudflare Tunnel.
 
 **Everything runs on Android (Termux).** One setup script — no Mac required.
 

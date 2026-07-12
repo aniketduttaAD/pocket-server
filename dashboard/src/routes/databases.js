@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../lib/db');
 const postgres = require('../lib/postgres');
-const cloudflared = require('../lib/cloudflared');
+const ngrok = require('../lib/ngrok');
 const config = require('../config');
 const { sanitizeName, generatePassword } = require('../lib/shell');
 const { jsonError } = require('../middleware/validate');
@@ -23,23 +23,31 @@ function persistDatabaseRow(row) {
   );
 }
 
-function enrichStoredRow(row) {
+async function enrichStoredRow(row) {
   if (!row?.password_enc || !row.username || !row.dbname) {
     return publicDatabaseRow(row);
   }
 
-  const urls = postgres.buildConnectionUrls(row.username, row.password_enc, row.dbname);
-  const needsUpdate =
-    !row.local_connection_url ||
-    !row.connection_url ||
-    row.host !== urls.host ||
-    row.connection_url !== urls.remoteConnectionUrl;
+  try {
+    const urls = await postgres.buildConnectionUrls(row.username, row.password_enc, row.dbname);
+    const needsUpdate =
+      config.database.remoteMode === 'ngrok' ||
+      !row.local_connection_url ||
+      !row.connection_url ||
+      row.host !== urls.host ||
+      row.connection_url !== urls.remoteConnectionUrl;
 
-  if (needsUpdate) {
     row.connection_url = urls.remoteConnectionUrl;
     row.local_connection_url = urls.localConnectionUrl;
     row.host = urls.host;
-    persistDatabaseRow(row);
+    row.remote_port = urls.remotePort;
+    delete row.remote_error;
+
+    if (needsUpdate) {
+      persistDatabaseRow(row);
+    }
+  } catch (err) {
+    row.remote_error = err.message;
   }
 
   return publicDatabaseRow(row);
@@ -53,14 +61,15 @@ function publicDatabaseRow(row) {
 
 router.get('/status', async (req, res) => {
   const pg = await postgres.listDatabases();
-  const tailscale = config.database.remoteMode === 'tailscale';
+  const ngrokStatus = await ngrok.getStatus();
   res.json({
     ok: pg.ok,
     provider: 'postgres',
-    publicHost: config.database.publicHost,
-    publicPort: config.database.publicPort,
+    publicHost: ngrokStatus.host || config.database.publicHost,
+    publicPort: ngrokStatus.port || config.database.publicPort,
     remoteMode: config.database.remoteMode,
-    tunnelConfigured: tailscale || cloudflared.dbTunnelConfigured(),
+    ngrok: ngrokStatus,
+    tunnelConfigured: ngrok.remoteReady(ngrokStatus),
     postgres: pg.ok,
     error: pg.error || null,
   });
@@ -71,7 +80,7 @@ router.get('/', async (req, res) => {
     .prepare('SELECT id, dbname, username, connection_url, local_connection_url, host, provider, created_at FROM databases ORDER BY created_at DESC')
     .all();
 
-  const stored = raw.map((row) => enrichStoredRow(row));
+  const stored = await Promise.all(raw.map((row) => enrichStoredRow(row)));
 
   let live = { ok: false, databases: [] };
   try {
@@ -80,19 +89,23 @@ router.get('/', async (req, res) => {
     live = { ok: false, error: err.message, databases: [] };
   }
 
-  const tailscale = config.database.remoteMode === 'tailscale';
+  const ngrokStatus = await ngrok.getStatus();
   res.json({
     stored,
     live,
     provider: 'postgres',
-    publicHost: config.database.publicHost,
-    publicPort: config.database.publicPort,
+    publicHost: ngrokStatus.host || config.database.publicHost,
+    publicPort: ngrokStatus.port || config.database.publicPort,
     remoteMode: config.database.remoteMode,
-    tunnelConfigured: tailscale || cloudflared.dbTunnelConfigured(),
+    ngrok: ngrokStatus,
+    tunnelConfigured: ngrok.remoteReady(ngrokStatus),
+    ngrokSync: config.database.remoteMode === 'ngrok'
+      ? 'Remote URLs refresh from live ngrok endpoint on each load (every 20s on Databases tab)'
+      : null,
     usage: {
-      remote: tailscale
-        ? `Tailscale — connect directly to ${config.database.publicHost}:${config.database.publicPort}`
-        : `Cloudflare — run cloudflared access tcp on client, then connect locally`,
+      remote: config.database.remoteMode === 'ngrok'
+        ? `Standalone URL via ngrok — connect from anywhere to ${ngrokStatus.host || 'ngrok host'}:${ngrokStatus.port || 'port'}`
+        : 'Enable NGROK_ENABLED=true for standalone remote URLs',
       local: 'Apps on this phone — use 127.0.0.1 URL',
     },
   });
@@ -105,8 +118,11 @@ router.post('/create', async (req, res) => {
       return jsonError(res, 503, pgCheck.error || 'PostgreSQL is not running on this phone');
     }
 
-    if (config.database.remoteMode !== 'tailscale') {
-      await cloudflared.ensureDbTunnel();
+    if (config.database.remoteMode === 'ngrok') {
+      const ngrokStatus = await ngrok.getStatus();
+      if (!ngrok.remoteReady(ngrokStatus)) {
+        return jsonError(res, 503, ngrokStatus.error || 'Start ngrok: pm2 restart ngrok-db');
+      }
     }
 
     let { dbname, username, password } = req.body;
