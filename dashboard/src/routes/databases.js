@@ -30,6 +30,19 @@ async function enrichStoredRow(row) {
 
   try {
     const urls = await postgres.buildConnectionUrls(row.username, row.password_enc, row.dbname);
+
+    if (urls.remotePending) {
+      row.connection_url = row.connection_url || null;
+      row.local_connection_url = urls.localConnectionUrl;
+      row.remote_error = urls.remoteError;
+      row.remote_port = null;
+      if (row.local_connection_url !== urls.localConnectionUrl) {
+        row.local_connection_url = urls.localConnectionUrl;
+        persistDatabaseRow(row);
+      }
+      return publicDatabaseRow(row);
+    }
+
     const needsUpdate =
       config.database.remoteMode === 'ngrok' ||
       !row.local_connection_url ||
@@ -118,13 +131,6 @@ router.post('/create', async (req, res) => {
       return jsonError(res, 503, pgCheck.error || 'PostgreSQL is not running on this phone');
     }
 
-    if (config.database.remoteMode === 'ngrok') {
-      const ngrokStatus = await ngrok.getStatus();
-      if (!ngrok.remoteReady(ngrokStatus)) {
-        return jsonError(res, 503, ngrokStatus.error || 'Start ngrok: pm2 restart ngrok-db');
-      }
-    }
-
     let { dbname, username, password } = req.body;
     dbname = sanitizeName(dbname, 'db');
     username = sanitizeName(username || dbname, 'user');
@@ -152,6 +158,8 @@ router.post('/create', async (req, res) => {
       password: result.password,
       host: result.host,
       provider: 'postgres',
+      remotePending: result.remotePending || false,
+      remoteError: result.remoteError || null,
       connectionUrl: result.connectionUrl,
       connection_url: result.connectionUrl,
       remoteConnectionUrl: result.remoteConnectionUrl,

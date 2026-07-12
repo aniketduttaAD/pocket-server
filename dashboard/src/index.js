@@ -28,7 +28,12 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'sha256-NcFubtw9DfouAiTFetFYhIuK3B/BtdXSA018Z+nA+Wk='", "https://static.cloudflareinsights.com"],
+        scriptSrc: [
+          "'self'",
+          "'sha256-NcFubtw9DfouAiTFetFYhIuK3B/BtdXSA018Z+nA+Wk='",
+          "'sha256-RF7cZbgGIbRk1clxLwfnzwjEOIuC8pb9AQoAIPi5IDc='",
+          'https://static.cloudflareinsights.com',
+        ],
         scriptSrcAttr: ["'none'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:'],

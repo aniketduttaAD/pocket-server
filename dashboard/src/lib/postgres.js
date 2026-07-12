@@ -18,12 +18,13 @@ async function resolveRemoteEndpoint() {
   if (config.database.remoteMode === 'ngrok') {
     const endpoint = await ngrok.getTcpEndpoint();
     if (endpoint.ok) {
-      return { host: endpoint.host, port: endpoint.port, mode: 'ngrok' };
+      return { ok: true, host: endpoint.host, port: endpoint.port, mode: 'ngrok' };
     }
-    throw new Error(endpoint.error || 'ngrok TCP tunnel is not running');
+    return { ok: false, mode: 'ngrok', error: endpoint.error || 'ngrok TCP tunnel is not running' };
   }
 
   return {
+    ok: true,
     host: config.database.publicHost,
     port: config.database.publicPort,
     mode: config.database.remoteMode,
@@ -34,10 +35,23 @@ async function buildConnectionUrls(username, password, dbname) {
   const encPass = encodeURIComponent(password);
   const localHost = config.postgres.host;
   const localPort = config.postgres.port;
-  const remote = await resolveRemoteEndpoint();
-
   const localConnectionUrl =
     `postgresql://${username}:${encPass}@${localHost}:${localPort}/${dbname}`;
+
+  const remote = await resolveRemoteEndpoint();
+  if (!remote.ok) {
+    return {
+      connectionUrl: null,
+      remoteConnectionUrl: null,
+      localConnectionUrl,
+      host: null,
+      remotePort: null,
+      remoteMode: remote.mode,
+      remotePending: true,
+      remoteError: remote.error,
+    };
+  }
+
   const remoteConnectionUrl =
     `postgresql://${username}:${encPass}@${remote.host}:${remote.port}/${dbname}?sslmode=prefer`;
 
@@ -48,7 +62,8 @@ async function buildConnectionUrls(username, password, dbname) {
     host: remote.host,
     remotePort: remote.port,
     remoteMode: remote.mode,
-    provider: 'postgres',
+    remotePending: false,
+    remoteError: null,
   };
 }
 

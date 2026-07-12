@@ -501,9 +501,11 @@ const App = {
         <div class="db-field">
           <div class="db-field-main">
             <p class="db-field-label">Remote (standalone — Mac / Vercel / anywhere)</p>
-            <code class="db-value">${UI.escapeHtml(remote)}</code>
+            ${remote
+              ? `<code class="db-value">${UI.escapeHtml(remote)}</code>`
+              : `<p class="hint" style="margin:0">Waiting for ngrok — start with <code>pm2 restart ngrok-db</code>. URL appears automatically.</p>`}
           </div>
-          <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(remote)}">Copy</button>
+          ${remote ? `<button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(remote)}">Copy</button>` : ''}
         </div>
         <div class="db-field">
           <div class="db-field-main">
@@ -618,7 +620,10 @@ const App = {
           password: result.password,
           ts: Date.now(),
         }));
-        UI.toast('Database created — copy URLs below', 'success');
+        const msg = result.remotePending
+          ? 'Database created — local URL ready; remote URL when ngrok is online'
+          : 'Database created — copy URLs below';
+        UI.toast(msg, result.remotePending ? 'info' : 'success');
         e.target.reset();
         await App.loadDatabases();
       } catch (err) {
