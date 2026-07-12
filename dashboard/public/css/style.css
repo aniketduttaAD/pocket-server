@@ -516,6 +516,67 @@ input:focus, select:focus {
 .copy-row { display: flex; gap: 0.625rem; align-items: flex-start; }
 .copy-row pre, .copy-row .code-block { flex: 1; max-height: 80px; }
 
+.db-card {
+  padding: 1.25rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+}
+.db-card-head {
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+.db-name {
+  font-size: 1rem;
+  margin-bottom: 0.35rem;
+}
+.db-meta {
+  gap: 0.45rem;
+}
+.db-field,
+.db-secret {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  margin-top: 0.625rem;
+}
+.db-secret {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.db-field-main {
+  min-width: 0;
+  flex: 1;
+}
+.db-field-label {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.db-value {
+  display: block;
+  width: 100%;
+  color: var(--text);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.db-secret .db-value {
+  color: #92400e;
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
 .row-actions { display: flex; gap: 0.375rem; flex-wrap: wrap; }
 
 /* ── Utilities ── */
@@ -651,6 +712,22 @@ input:focus, select:focus {
   .topbar { padding: 0.75rem 1.125rem; }
   .toast { left: 1rem; right: 1rem; bottom: 1rem; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
+  .db-card { padding: 1rem; }
+  .db-card-head,
+  .db-field,
+  .db-secret {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .db-card-head .btn,
+  .db-field .btn,
+  .db-secret .btn {
+    width: 100%;
+  }
+  .db-value {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 @media (min-width: 769px) {

@@ -438,11 +438,11 @@ const App = {
         const local = d.local_connection_url || remote;
         const showPassword = justCreated?.dbname === d.dbname && justCreated?.password;
         return `
-      <div class="domain-card">
-        <div class="domain-head">
+      <div class="domain-card db-card">
+        <div class="domain-head db-card-head">
           <div>
-            <div class="domain-host">${UI.escapeHtml(d.dbname)}</div>
-            <div class="domain-badges">
+            <div class="domain-host db-name">${UI.escapeHtml(d.dbname)}</div>
+            <div class="domain-badges db-meta">
               ${UI.badge('active')}
               <span class="hint">${UI.escapeHtml(d.username)}</span>
               ${d.host ? `<span class="hint">${UI.escapeHtml(d.host)}</span>` : ''}
@@ -451,21 +451,25 @@ const App = {
           <button type="button" class="btn small danger" data-action="delete-db" data-dbname="${UI.attr(d.dbname)}">Delete</button>
         </div>
         ${showPassword ? `
-        <div class="copy-row" style="margin-bottom:0.75rem;padding:0.75rem;background:#fef3c7;border-radius:8px">
-          <div>
-            <p class="hint" style="margin:0 0 0.35rem"><strong>Password (save now)</strong></p>
-            <code class="code-block mono">${UI.escapeHtml(justCreated.password)}</code>
+        <div class="db-secret">
+          <div class="db-field-main">
+            <p class="db-field-label">Password (save now)</p>
+            <code class="db-value">${UI.escapeHtml(justCreated.password)}</code>
           </div>
           <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(justCreated.password)}">Copy</button>
         </div>` : ''}
-        <p class="hint">Remote (Mac / Tailscale)</p>
-        <div class="copy-row">
-          <code class="code-block mono">${UI.escapeHtml(remote)}</code>
+        <div class="db-field">
+          <div class="db-field-main">
+            <p class="db-field-label">Remote (Mac / Tailscale)</p>
+            <code class="db-value">${UI.escapeHtml(remote)}</code>
+          </div>
           <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(remote)}">Copy</button>
         </div>
-        <p class="hint" style="margin-top:0.5rem">Local (phone apps)</p>
-        <div class="copy-row">
-          <code class="code-block mono">${UI.escapeHtml(local)}</code>
+        <div class="db-field">
+          <div class="db-field-main">
+            <p class="db-field-label">Local (phone apps)</p>
+            <code class="db-value">${UI.escapeHtml(local)}</code>
+          </div>
           <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(local)}">Copy</button>
         </div>
       </div>`;

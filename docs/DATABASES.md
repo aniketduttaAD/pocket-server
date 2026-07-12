@@ -88,7 +88,8 @@ Password shows once in a yellow banner after create — copy it before refresh/n
 |-------|-----|
 | Create fails — Postgres | `pg_ctl -D ~/postgres-data start` |
 | Local URL empty in dashboard | Deploy latest dash + refresh (auto-backfills URLs) |
-| Remote URL still shows `db.domain` | Set `DB_PUBLIC_HOST=100.x.x.x` in `~/dash/.env`, restart dash |
+| Remote URL still shows `db.domain` | Set `DB_PUBLIC_HOST=100.x.x.x` in `~/dash/.env`, then `pm2 restart dash --update-env` |
+| `listen_addresses` still `localhost` | Re-run `configure-postgres-tailscale.sh` — reload alone is not enough; Postgres must restart |
 | Mac can't connect via Tailscale | Same Tailscale account on both devices; run configure script |
 | Local URL fails on phone | Set `PGUSER=$(whoami)` in `~/dash/.env` |
 | role does not exist | Set `PGUSER=$(whoami)` in `~/dash/.env` |
