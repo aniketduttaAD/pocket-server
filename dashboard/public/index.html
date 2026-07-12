@@ -160,32 +160,13 @@
         <section id="tab-databases" class="panel">
           <div class="card">
             <div class="card-header"><h2>PostgreSQL databases</h2></div>
-            <p class="hint" id="db-provider-status">Hosted on your phone — remote connection strings via <code id="db-public-host">db.yourdomain</code></p>
+            <p class="hint" id="db-provider-status">Hosted on your phone</p>
             <form id="db-form" class="form-grid">
               <label>Database name <input name="dbname" placeholder="myapp_db" required pattern="[a-zA-Z][a-zA-Z0-9_]{0,62}"></label>
               <label>Username <input name="username" placeholder="auto: same as db name"></label>
               <label class="full">Password <input name="password" placeholder="auto-generated if empty"></label>
               <button type="submit" class="btn">Create database</button>
             </form>
-          </div>
-          <div class="card hidden" id="db-result">
-            <div class="card-header"><h2>Connection strings</h2></div>
-            <p class="hint"><strong>Remote</strong> — Mac, Vercel, anywhere. <strong>Local</strong> — apps running on this phone only.</p>
-            <p class="hint" style="margin-top:0.5rem">Remote URL</p>
-            <div class="copy-row">
-              <pre id="db-connection" class="code-block"></pre>
-              <button type="button" class="btn secondary small" id="copy-db-url">Copy remote</button>
-            </div>
-            <p class="hint" style="margin-top:0.75rem">Local URL (phone apps)</p>
-            <div class="copy-row">
-              <pre id="db-local-connection" class="code-block"></pre>
-              <button type="button" class="btn secondary small" id="copy-db-local">Copy local</button>
-            </div>
-            <div class="copy-row" style="margin-top:0.75rem">
-              <pre id="db-env-block" class="code-block"></pre>
-              <button type="button" class="btn secondary small" id="copy-db-env">Copy .env</button>
-            </div>
-            <p class="hint">Save the password now — it won't be shown again.</p>
           </div>
           <div class="card">
             <div class="card-header"><h2>Your databases</h2></div>

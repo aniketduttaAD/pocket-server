@@ -404,26 +404,34 @@ const App = {
     const data = await this.api('/api/databases');
     const el = document.getElementById('databases-list');
     const rows = data.stored || [];
+    const justCreated = (() => {
+      try {
+        return JSON.parse(sessionStorage.getItem('db-created') || 'null');
+      } catch {
+        return null;
+      }
+    })();
 
     const statusEl = document.getElementById('db-provider-status');
-    const hostEl = document.getElementById('db-public-host');
-    if (hostEl && data.publicHost) hostEl.textContent = data.publicHost;
     if (statusEl) {
-      if (data.live?.ok) {
-        statusEl.innerHTML = `PostgreSQL on this phone. Remote host: <code>${UI.escapeHtml(data.publicHost || 'db.yourdomain')}</code>${data.tunnelConfigured ? '' : ' — tunnel will be configured on first create'}`;
-      } else {
+      if (!data.live?.ok) {
         statusEl.textContent = data.live?.error || 'Start PostgreSQL: pg_ctl -D ~/postgres-data start';
+      } else if (data.remoteMode === 'tailscale') {
+        statusEl.innerHTML = `PostgreSQL on this phone. Remote via <strong>Tailscale</strong> at <code>${UI.escapeHtml(data.publicHost || '')}</code> — connect directly from Mac (no cloudflared).`;
+      } else {
+        statusEl.innerHTML = `PostgreSQL on this phone. Remote via Cloudflare — run <code>cloudflared access tcp</code> on your Mac, or set <code>DB_PUBLIC_HOST</code> to your Tailscale IP.`;
       }
     }
 
     if (!rows.length) {
-      el.innerHTML = UI.emptyState('No databases yet', 'Create one above — you get remote + local connection strings');
+      el.innerHTML = UI.emptyState('No databases yet', 'Create one above — remote + local URLs appear here');
       return;
     }
 
     el.innerHTML = rows.map((d) => {
-      const remote = d.connection_url;
+      const remote = d.connection_url || '';
       const local = d.local_connection_url || remote;
+      const showPassword = justCreated?.dbname === d.dbname && justCreated?.password;
       return `
       <div class="domain-card">
         <div class="domain-head">
@@ -437,7 +445,15 @@ const App = {
           </div>
           <button type="button" class="btn small danger" data-action="delete-db" data-dbname="${UI.attr(d.dbname)}">Delete</button>
         </div>
-        <p class="hint">Remote (anywhere)</p>
+        ${showPassword ? `
+        <div class="copy-row" style="margin-bottom:0.75rem;padding:0.75rem;background:#fef3c7;border-radius:8px">
+          <div>
+            <p class="hint" style="margin:0 0 0.35rem"><strong>Password (save now)</strong></p>
+            <code class="code-block mono">${UI.escapeHtml(justCreated.password)}</code>
+          </div>
+          <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(justCreated.password)}">Copy</button>
+        </div>` : ''}
+        <p class="hint">Remote (Mac / Tailscale)</p>
         <div class="copy-row">
           <code class="code-block mono">${UI.escapeHtml(remote)}</code>
           <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(remote)}">Copy</button>
@@ -544,36 +560,17 @@ const App = {
           method: 'POST',
           body: JSON.stringify(Object.fromEntries(fd.entries())),
         });
-        const remote = result.remoteConnectionUrl || result.connectionUrl;
-        const local = result.localConnectionUrl || remote;
-        document.getElementById('db-result').classList.remove('hidden');
-        document.getElementById('db-connection').textContent = remote;
-        document.getElementById('db-local-connection').textContent = local;
-        document.getElementById('db-env-block').textContent = `DATABASE_URL=${remote}`;
-        document.getElementById('copy-db-url').dataset.copy = remote;
-        document.getElementById('copy-db-local').dataset.copy = local;
-        document.getElementById('copy-db-env').dataset.copy = `DATABASE_URL=${remote}`;
-        UI.toast('Database created', 'success');
+        sessionStorage.setItem('db-created', JSON.stringify({
+          dbname: result.dbname,
+          password: result.password,
+          ts: Date.now(),
+        }));
+        UI.toast('Database created — copy URLs below', 'success');
         e.target.reset();
         await App.loadDatabases();
       } catch (err) {
         UI.toast(err.message, 'error');
       }
-    });
-
-    document.getElementById('copy-db-url')?.addEventListener('click', () => {
-      const url = document.getElementById('copy-db-url').dataset.copy;
-      if (url) UI.copy(url);
-    });
-
-    document.getElementById('copy-db-local')?.addEventListener('click', () => {
-      const url = document.getElementById('copy-db-local').dataset.copy;
-      if (url) UI.copy(url);
-    });
-
-    document.getElementById('copy-db-env')?.addEventListener('click', () => {
-      const block = document.getElementById('copy-db-env').dataset.copy;
-      if (block) UI.copy(block);
     });
 
     document.getElementById('terminal-form').addEventListener('submit', async (e) => {

@@ -5,6 +5,14 @@ const os = require('os');
 const isDev = process.env.NODE_ENV !== 'production';
 const homeDir = process.env.HOME_DIR || os.homedir();
 
+function isTailscaleHost(host) {
+  if (!host) return false;
+  return /^100\.\d+\.\d+\.\d+$/.test(host) || host.endsWith('.ts.net');
+}
+
+const baseDomain = process.env.BASE_DOMAIN || 'aniketdutta.space';
+const dbPublicHost = process.env.DB_PUBLIC_HOST || `db.${baseDomain}`;
+
 module.exports = {
   port: parseInt(process.env.PORT || '3000', 10),
   bindHost: process.env.BIND_HOST || (isDev ? '0.0.0.0' : '127.0.0.1'),
@@ -32,10 +40,11 @@ module.exports = {
     name: process.env.TUNNEL_NAME || 'phone-tunnel',
     id: process.env.TUNNEL_ID || '',
   },
-  baseDomain: process.env.BASE_DOMAIN || 'aniketdutta.space',
+  baseDomain,
   database: {
-    publicHost: process.env.DB_PUBLIC_HOST || `db.${process.env.BASE_DOMAIN || 'aniketdutta.space'}`,
+    publicHost: dbPublicHost,
     publicPort: parseInt(process.env.DB_PUBLIC_PORT || '5432', 10),
+    remoteMode: isTailscaleHost(dbPublicHost) ? 'tailscale' : 'cloudflare',
   },
   postgres: {
     dataDir: process.env.PGDATA || path.join(homeDir, 'postgres-data'),

@@ -8,23 +8,70 @@ const { jsonError } = require('../middleware/validate');
 
 const router = express.Router();
 
+function persistDatabaseRow(row) {
+  db.prepare(
+    `INSERT OR REPLACE INTO databases (dbname, username, password_enc, connection_url, local_connection_url, host, provider)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    row.dbname,
+    row.username,
+    row.password_enc,
+    row.connection_url,
+    row.local_connection_url,
+    row.host,
+    row.provider || 'postgres'
+  );
+}
+
+function enrichStoredRow(row) {
+  if (!row?.password_enc || !row.username || !row.dbname) {
+    return publicDatabaseRow(row);
+  }
+
+  const urls = postgres.buildConnectionUrls(row.username, row.password_enc, row.dbname);
+  const needsUpdate =
+    !row.local_connection_url ||
+    !row.connection_url ||
+    row.host !== urls.host ||
+    row.connection_url !== urls.remoteConnectionUrl;
+
+  if (needsUpdate) {
+    row.connection_url = urls.remoteConnectionUrl;
+    row.local_connection_url = urls.localConnectionUrl;
+    row.host = urls.host;
+    persistDatabaseRow(row);
+  }
+
+  return publicDatabaseRow(row);
+}
+
+function publicDatabaseRow(row) {
+  if (!row) return row;
+  const { password_enc, ...safe } = row;
+  return safe;
+}
+
 router.get('/status', async (req, res) => {
   const pg = await postgres.listDatabases();
+  const tailscale = config.database.remoteMode === 'tailscale';
   res.json({
     ok: pg.ok,
     provider: 'postgres',
     publicHost: config.database.publicHost,
     publicPort: config.database.publicPort,
-    tunnelConfigured: cloudflared.dbTunnelConfigured(),
+    remoteMode: config.database.remoteMode,
+    tunnelConfigured: tailscale || cloudflared.dbTunnelConfigured(),
     postgres: pg.ok,
     error: pg.error || null,
   });
 });
 
 router.get('/', async (req, res) => {
-  const stored = db
+  const raw = db
     .prepare('SELECT id, dbname, username, connection_url, local_connection_url, host, provider, created_at FROM databases ORDER BY created_at DESC')
     .all();
+
+  const stored = raw.map((row) => enrichStoredRow(row));
 
   let live = { ok: false, databases: [] };
   try {
@@ -33,16 +80,20 @@ router.get('/', async (req, res) => {
     live = { ok: false, error: err.message, databases: [] };
   }
 
+  const tailscale = config.database.remoteMode === 'tailscale';
   res.json({
     stored,
     live,
     provider: 'postgres',
     publicHost: config.database.publicHost,
     publicPort: config.database.publicPort,
-    tunnelConfigured: cloudflared.dbTunnelConfigured(),
+    remoteMode: config.database.remoteMode,
+    tunnelConfigured: tailscale || cloudflared.dbTunnelConfigured(),
     usage: {
-      remote: `Apps on Mac, Vercel, etc. — use the remote URL (${config.database.publicHost})`,
-      local: 'Apps running on this phone — use the local URL (127.0.0.1) for lower latency',
+      remote: tailscale
+        ? `Tailscale — connect directly to ${config.database.publicHost}:${config.database.publicPort}`
+        : `Cloudflare — run cloudflared access tcp on client, then connect locally`,
+      local: 'Apps on this phone — use 127.0.0.1 URL',
     },
   });
 });
@@ -54,7 +105,9 @@ router.post('/create', async (req, res) => {
       return jsonError(res, 503, pgCheck.error || 'PostgreSQL is not running on this phone');
     }
 
-    await cloudflared.ensureDbTunnel();
+    if (config.database.remoteMode !== 'tailscale') {
+      await cloudflared.ensureDbTunnel();
+    }
 
     let { dbname, username, password } = req.body;
     dbname = sanitizeName(dbname, 'db');
@@ -66,18 +119,15 @@ router.post('/create', async (req, res) => {
       return jsonError(res, 500, result.error || 'Failed to create database');
     }
 
-    db.prepare(
-      `INSERT OR REPLACE INTO databases (dbname, username, password_enc, connection_url, local_connection_url, host, provider)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(
+    persistDatabaseRow({
       dbname,
       username,
-      result.password,
-      result.connectionUrl,
-      result.localConnectionUrl,
-      result.host,
-      'postgres'
-    );
+      password_enc: result.password,
+      connection_url: result.connectionUrl,
+      local_connection_url: result.localConnectionUrl,
+      host: result.host,
+      provider: 'postgres',
+    });
 
     res.json({
       ok: true,
@@ -87,8 +137,10 @@ router.post('/create', async (req, res) => {
       host: result.host,
       provider: 'postgres',
       connectionUrl: result.connectionUrl,
+      connection_url: result.connectionUrl,
       remoteConnectionUrl: result.remoteConnectionUrl,
       localConnectionUrl: result.localConnectionUrl,
+      local_connection_url: result.localConnectionUrl,
     });
   } catch (err) {
     jsonError(res, 400, err.message);

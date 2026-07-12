@@ -35,6 +35,7 @@ router.get('/status', async (req, res) => {
   const tunnelConfigured = Boolean(config.tunnel.id);
   const cloudflaredConfigExists = fs.existsSync(config.paths.cloudflaredConfig);
   const dbTunnelOk = cloudflared.dbTunnelConfigured();
+  const tailscaleDb = config.database.remoteMode === 'tailscale';
 
   const checks = [
     {
@@ -83,9 +84,11 @@ router.get('/status', async (req, res) => {
     },
     {
       id: 'db_tunnel',
-      label: 'Database tunnel configured',
-      ok: dbTunnelOk,
-      hint: `Create a database in the dashboard or add tcp ingress for ${config.database.publicHost}`,
+      label: tailscaleDb ? 'Database remote via Tailscale' : 'Database tunnel configured',
+      ok: tailscaleDb || dbTunnelOk,
+      hint: tailscaleDb
+        ? `Remote URLs use ${config.database.publicHost} — ensure Postgres listens on Tailscale (run configure-postgres-tailscale.sh)`
+        : `Create a database in the dashboard or add tcp ingress for ${config.database.publicHost}`,
     },
     {
       id: 'pm2',

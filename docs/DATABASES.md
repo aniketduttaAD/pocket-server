@@ -1,87 +1,94 @@
 # PostgreSQL databases (self-hosted)
 
-Phone Server runs **PostgreSQL on your phone** and gives you **remote connection strings** — create a database in the dashboard, copy the URL, use it in any project from anywhere.
+Phone Server runs **PostgreSQL on your phone** with **local** and **remote** connection strings.
+
+## Which services need Tailscale?
+
+| Service | Access method | Needs Tailscale? |
+|---------|---------------|------------------|
+| Dashboard (`dash.*`) | Cloudflare HTTP tunnel | **No** |
+| Media (`media.*`) | Cloudflare HTTP tunnel | **No** |
+| App subdomains | Cloudflare HTTP tunnel | **No** |
+| **PostgreSQL remote** | Tailscale **or** Cloudflare TCP | **Yes** (recommended: Tailscale) |
+
+Only **remote database access** benefits from Tailscale. Everything else keeps using Cloudflare.
 
 ## Two connection strings
 
 | URL | Use when |
 |-----|----------|
-| **Remote** `postgresql://user:pass@db.aniketdutta.space:5432/mydb` | Mac dev, other servers, anywhere on the internet |
-| **Local** `postgresql://user:pass@127.0.0.1:5432/mydb` | Apps running **on the phone** (PM2 projects) — faster, no round-trip |
+| **Local** `postgresql://user:pass@127.0.0.1:5432/mydb` | Apps on the **phone** (PM2 / Termux) |
+| **Remote** `postgresql://user:pass@100.x.x.x:5432/mydb` | Mac, laptop — over **Tailscale** (direct, no cloudflared) |
 
-Remote access uses **Cloudflare Tunnel (TCP)** to `db.<your-domain>` → Postgres on the phone. Postgres itself stays on `127.0.0.1` (not exposed on LAN).
+---
 
-## Setup
+## Tailscale setup (recommended)
 
-### 1. PostgreSQL on phone
+### 1. Phone — Tailscale app
+
+You already installed the app and logged in. Open Tailscale → note your phone's **100.x.x.x** IP.
+
+### 2. Phone — allow Postgres on Tailscale (Termux)
+
+Postgres defaults to `127.0.0.1` only. Run once:
 
 ```bash
-pg_ctl -D ~/postgres-data start
+bash ~/pocket-server/scripts/configure-postgres-tailscale.sh
 ```
 
-Setup script initializes this automatically. Ensure `PGUSER` in `~/dash/.env` matches your Termux user (`whoami`).
+### 3. Phone — set dashboard env
 
-### 2. Database tunnel (automatic)
-
-When you create your first database in the dashboard, it adds to `~/.cloudflared/config.yml`:
-
-```yaml
-  - hostname: db.aniketdutta.space
-    service: tcp://127.0.0.1:5432
+```bash
+# Replace with your phone's Tailscale IP from the app
+echo "DB_PUBLIC_HOST=100.x.x.x" >> ~/dash/.env
+pm2 restart dash
 ```
 
-And routes DNS. Or add manually and `pm2 restart tunnel`.
+Refresh the Databases tab — remote URLs will use the Tailscale IP. Existing DBs auto-update on load.
 
-### 3. Optional `.env` overrides
+### 4. Mac — Tailscale app
 
-```env
-DB_PUBLIC_HOST=db.aniketdutta.space
-DB_PUBLIC_PORT=5432
-PGUSER=u0_a759
-PGDATABASE=postgres
+Install [Tailscale for Mac](https://tailscale.com/download), log in with the **same account**.
+
+### 5. Test from Mac
+
+```bash
+./pg-test-standalone.sh "postgresql://USER:PASS@100.x.x.x:5432/passo?sslmode=prefer"
 ```
 
-### 4. Create databases
+### 6. Test local on phone (Termux)
 
-Dashboard → **Databases** → name → **Create** → copy remote or local URL.
-
-## Example
-
-**Remote (Mac / cloud):**
-
-```env
-DATABASE_URL=postgresql://passo:secret@db.aniketdutta.space:5432/passo?sslmode=prefer
+```bash
+psql "postgresql://USER:PASS@127.0.0.1:5432/passo" -c "SELECT 1"
 ```
 
-**Local (app on phone):**
+---
 
-```env
-DATABASE_URL=postgresql://passo:secret@127.0.0.1:5432/passo
-```
+## Cloudflare TCP (alternative, not recommended)
+
+Remote URLs with `db.yourdomain:5432` **do not work** with plain `psql`. Requires `cloudflared access tcp` on every client. Use Tailscale instead.
+
+---
+
+## Create databases
+
+Dashboard → **Databases** → name → **Create** → URLs appear in **Your databases** list (not a separate card).
+
+Password shows once in a yellow banner after create — copy it before refresh/navigating away.
 
 ## Security
 
 - Each app gets its own database + user + password
-- Postgres not bound to LAN — only localhost + Cloudflare tunnel
+- Postgres accepts Tailscale range (`100.64.0.0/10`) only when configured via script
 - Use strong passwords; rotate by deleting and recreating in dashboard
-- Consider Cloudflare Access / firewall rules on `db.*` for extra protection
-
-## Remote connection notes
-
-Cloudflare TCP tunnels route Postgres through Cloudflare's network. Most standard Postgres clients connect to `db.yourdomain:5432` directly. If a client fails, try:
-
-```bash
-cloudflared access tcp --hostname db.aniketdutta.space --url 127.0.0.1:5432
-# then connect to 127.0.0.1:5432 locally
-```
-
-For **Tailscale** instead of public hostname, set `DB_PUBLIC_HOST=100.x.x.x` (phone's Tailscale IP).
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
 | Create fails — Postgres | `pg_ctl -D ~/postgres-data start` |
-| Remote URL fails | Check tunnel ingress + `pm2 restart tunnel` |
-| Local URL fails | Check `PGUSER` in `.env` |
+| Local URL empty in dashboard | Deploy latest dash + refresh (auto-backfills URLs) |
+| Remote URL still shows `db.domain` | Set `DB_PUBLIC_HOST=100.x.x.x` in `~/dash/.env`, restart dash |
+| Mac can't connect via Tailscale | Same Tailscale account on both devices; run configure script |
+| Local URL fails on phone | Set `PGUSER=$(whoami)` in `~/dash/.env` |
 | role does not exist | Set `PGUSER=$(whoami)` in `~/dash/.env` |
