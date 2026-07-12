@@ -123,12 +123,19 @@ phase_config() {
 phase_packages() {
   step "Installing system packages"
   pkg update -y && pkg upgrade -y
-  pkg install -y git nodejs-lts python postgresql openssh curl wget tmux go unzip termux-services openssl
+  pkg install -y \
+    git nodejs-lts python postgresql openssh curl wget tmux unzip \
+    termux-services openssl rsync
+
+  for cmd in git node npm psql initdb pg_ctl curl wget unzip rsync openssl; do
+    command -v "$cmd" >/dev/null 2>&1 || die "Missing required command after install: $cmd"
+  done
 
   if ! command -v pm2 >/dev/null 2>&1; then
     echo "Installing PM2..."
     npm install -g pm2
   fi
+  command -v pm2 >/dev/null 2>&1 || die "PM2 install failed — check network and retry"
 }
 
 phase_storage() {
@@ -146,7 +153,7 @@ phase_postgres() {
   if [ ! -d "$pgdata" ]; then
     echo "Initializing PostgreSQL at $pgdata..."
     mkdir -p "$pgdata"
-    initdb -D "$pgdata"
+    initdb -D "$pgdata" --locale=C --encoding=UTF8
   fi
 
   pg_ctl -D "$pgdata" -l "$HOME/postgres.log" start 2>/dev/null || true
@@ -164,15 +171,35 @@ EOF
   echo "PostgreSQL is running."
 }
 
+install_filebrowser() {
+  if command -v filebrowser >/dev/null 2>&1; then
+    return
+  fi
+
+  local arch fb_arch fb_bin="$PREFIX/bin/filebrowser" tmpdir
+  arch="$(uname -m)"
+  case "$arch" in
+    aarch64|arm64) fb_arch=arm64 ;;
+    armv7l|arm) fb_arch=armv7 ;;
+    *) die "Unsupported CPU architecture for File Browser: $arch" ;;
+  esac
+
+  echo "Downloading File Browser ($fb_arch)..."
+  tmpdir="$(mktemp -d)"
+  curl -fsSL "https://github.com/filebrowser/filebrowser/releases/latest/download/linux-${fb_arch}-filebrowser.tar.gz" \
+    -o "$tmpdir/filebrowser.tar.gz"
+  tar -xzf "$tmpdir/filebrowser.tar.gz" -C "$tmpdir"
+  install -m 755 "$tmpdir/filebrowser" "$fb_bin"
+  rm -rf "$tmpdir"
+  hash -r 2>/dev/null || true
+  command -v filebrowser >/dev/null 2>&1 || die "File Browser install failed"
+}
+
 phase_filebrowser() {
-  step "File Browser (media.aniketdutta.space)"
+  step "File Browser (media.${BASE_DOMAIN})"
   local fb_dir="$HOME/filebrowser"
 
-  if ! command -v filebrowser >/dev/null 2>&1; then
-    echo "Building File Browser (may take a few minutes)..."
-    go install github.com/filebrowser/filebrowser/v2@latest
-    export PATH="$PATH:$HOME/go/bin"
-  fi
+  install_filebrowser
 
   cat > "$fb_dir/config.json" << EOF
 {
@@ -273,6 +300,7 @@ phase_dashboard() {
 
   echo "Installing dashboard to $DASH_DIR..."
   mkdir -p "$DASH_DIR/data" "$DASH_DIR/uploads"
+  command -v rsync >/dev/null 2>&1 || die "rsync not found — run: pkg install rsync"
   rsync -a --delete \
     --exclude node_modules \
     --exclude .env \
