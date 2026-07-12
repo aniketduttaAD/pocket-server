@@ -284,23 +284,39 @@ EOF
   echo "Media server running on 127.0.0.1:8080 (PM2: media)"
 }
 
+install_cloudflared() {
+  # GitHub Linux binaries fail on Termux with "unexpected e_type: 2"
+  if [ -f "$HOME/cloudflared" ]; then
+    if ! "$HOME/cloudflared" --version >/dev/null 2>&1; then
+      echo "Removing incompatible ~/cloudflared binary..."
+      rm -f "$HOME/cloudflared"
+    fi
+  fi
+
+  if command -v cloudflared >/dev/null 2>&1 && cloudflared --version >/dev/null 2>&1; then
+    command -v cloudflared
+    return 0
+  fi
+
+  echo "Installing cloudflared from Termux packages..."
+  if ! pkg install -y cloudflared 2>/dev/null; then
+    echo "Enabling tur-repo and retrying..."
+    pkg install -y tur-repo
+    pkg install -y cloudflared
+  fi
+
+  command -v cloudflared >/dev/null 2>&1 || die "cloudflared install failed — run: pkg install tur-repo && pkg install cloudflared"
+  cloudflared --version >/dev/null 2>&1 || die "cloudflared not working after install"
+  command -v cloudflared
+}
+
 phase_cloudflared() {
   step "Cloudflare Tunnel"
-  local cf_bin="$HOME/cloudflared"
-  local cf_config="$HOME/.cloudflared/config.yml"
+  local cf_bin cf_config="$HOME/.cloudflared/config.yml"
 
-  if [ ! -x "$cf_bin" ]; then
-    local arch cf_arch
-    arch="$(uname -m)"
-    case "$arch" in
-      aarch64|arm64) cf_arch=arm64 ;;
-      armv7l|arm) cf_arch=arm ;;
-      *) die "Unsupported CPU architecture: $arch" ;;
-    esac
-    echo "Downloading cloudflared ($cf_arch)..."
-    curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${cf_arch}" -o "$cf_bin"
-    chmod +x "$cf_bin"
-  fi
+  cf_bin="$(install_cloudflared)"
+  CLOUDFLARED_BIN="$cf_bin"
+  echo "Using cloudflared: $cf_bin"
 
   if [ ! -f "$cf_config" ] || ! grep -q "^tunnel:" "$cf_config" 2>/dev/null; then
     cf_tunnel_login "$cf_bin"
@@ -378,7 +394,7 @@ HOME_DIR=${TERMUX_HOME}
 PROJECTS_FRONTEND=${TERMUX_HOME}/projects/frontend
 PROJECTS_BACKEND=${TERMUX_HOME}/projects/backend
 UPLOADS_DIR=${TERMUX_HOME}/uploads
-CLOUDFLARED_BIN=${HOME}/cloudflared
+CLOUDFLARED_BIN=${CLOUDFLARED_BIN:-$PREFIX/bin/cloudflared}
 CLOUDFLARED_CONFIG=${HOME}/.cloudflared/config.yml
 
 PROJECT_PORT_START=3001
