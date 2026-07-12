@@ -77,10 +77,10 @@ open_browser() {
 }
 
 ensure_pm2_running() {
-  local name="$1" bin="$2"
-  shift 2
+  local name="$1"
+  shift
   pm2 delete "$name" 2>/dev/null || true
-  pm2 start "$bin" --name "$name" --interpreter none -- "$@"
+  pm2 start "$@"
   sleep 2
   if pm2 describe "$name" 2>/dev/null | grep -qE 'status.*online'; then
     return 0
@@ -274,16 +274,12 @@ export MEDIA_PASS=$FB_PASSWORD
 EOF
   chmod 600 "$media_dir/env.sh"
 
-  cat > "$media_dir/run.sh" << EOF
-#!/data/data/com.termux/files/usr/bin/bash
-set -a
-source "$media_dir/env.sh"
-set +a
-exec node "$media_dir/media-server.js"
-EOF
-  chmod 700 "$media_dir/run.sh"
+  # shellcheck disable=SC1091
+  set -a
+  source "$media_dir/env.sh"
+  set +a
 
-  ensure_pm2_running media "$media_dir/run.sh"
+  ensure_pm2_running media "$media_dir/media-server.js" --name media --interpreter node
   pm2 save
   echo "Media server running on 127.0.0.1:8080 (PM2: media)"
 }
@@ -336,7 +332,7 @@ EOF
     echo "Using tunnel ID: $TUNNEL_ID"
   fi
 
-  ensure_pm2_running tunnel "$cf_bin" tunnel run "$TUNNEL_NAME"
+  ensure_pm2_running tunnel "$cf_bin" --name tunnel --interpreter none -- tunnel run "$TUNNEL_NAME"
   pm2 save
   echo "Cloudflare tunnel running (PM2: tunnel)"
 }
@@ -407,7 +403,7 @@ EOF
 
   cd "$DASH_DIR"
   npm install --production
-  ensure_pm2_running dash node src/index.js
+  ensure_pm2_running dash "$DASH_DIR/src/index.js" --name dash --cwd "$DASH_DIR"
   pm2 save
 
   echo "Dashboard running on 127.0.0.1:3000 (PM2: dash)"
