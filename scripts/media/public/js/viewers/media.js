@@ -9,12 +9,7 @@
   var transcodeFirst = data?.dataset.transcodeAudio === '1';
   var transcodeStarted = transcodeFirst;
   var player = null;
-  var M = window.MediaLib || window.Media;
-
-  var PLYR_CONTROLS = [
-    'play-large', 'play', 'progress', 'current-time', 'duration',
-    'mute', 'volume', 'settings', 'pip', 'fullscreen',
-  ];
+  var M = window.MediaLib || window.Media || {};
 
   function setStatus(msg, showFix) {
     if (!statusEl) return;
@@ -34,33 +29,46 @@
     transcodeStarted = true;
     var wasTime = video.currentTime || 0;
     var wasPlaying = opts.forcePlay || !video.paused;
-    setStatus('Converting audio to AAC…', false);
+    setStatus('Converting…', false);
     video.pause();
-    if (player) player.source = { type: 'video', sources: [{ src: transcodeUrl, type: 'video/mp4' }] };
-    else video.src = transcodeUrl;
+    if (player && player.source !== undefined) {
+      try {
+        player.source = { type: 'video', sources: [{ src: transcodeUrl, type: 'video/mp4' }] };
+      } catch (e) {
+        video.src = transcodeUrl;
+      }
+    } else {
+      video.src = transcodeUrl;
+    }
     video.load();
-    video.muted = false;
-    video.defaultMuted = false;
-    video.volume = 1;
-    video.removeAttribute('muted');
+    unmute(video);
     var onReady = function () {
       video.removeEventListener('loadedmetadata', onReady);
       if (wasTime > 0 && video.duration && wasTime < video.duration - 1) {
         video.currentTime = wasTime;
       }
-      setStatus('AAC audio', false);
+      setStatus('AAC', false);
       if (wasPlaying) {
         var p = video.play();
         if (p && p.catch) p.catch(function () {});
       }
-      M?.toast?.('Audio enabled via server transcode');
+      if (M.toast) M.toast('Audio converted to AAC');
     };
     video.addEventListener('loadedmetadata', onReady, { once: true });
   }
 
+  function unmute(el) {
+    try {
+      el.muted = false;
+      el.defaultMuted = false;
+      el.volume = 1;
+      el.removeAttribute('muted');
+    } catch (e) {}
+  }
+
   function maybeAutoTranscode() {
     if (!ffmpegOk || !transcodeUrl) {
-      if (!ffmpegOk) setStatus('No audio — install ffmpeg on server', false);
+      if (!ffmpegOk) setStatus('No audio — install ffmpeg', false);
       return;
     }
     startTranscode();
@@ -83,7 +91,9 @@
     });
 
     video.addEventListener('playing', function onPlay() {
+      video.removeEventListener('playing', onPlay);
       setTimeout(function () {
+        if (transcodeStarted) return;
         var decoded = hasDecodedAudio();
         if (decoded === false) {
           maybeAutoTranscode();
@@ -91,62 +101,88 @@
           setStatus('No audio?', true);
         }
       }, 1800);
-      video.removeEventListener('playing', onPlay);
     });
 
     video.addEventListener('timeupdate', function onTime() {
       if (video.currentTime > 1.5) {
+        video.removeEventListener('timeupdate', onTime);
+        if (transcodeStarted) return;
         if (typeof video.webkitAudioDecodedByteCount === 'number'
           && video.webkitAudioDecodedByteCount === 0) {
           maybeAutoTranscode();
         }
-        video.removeEventListener('timeupdate', onTime);
       }
     });
 
     video.addEventListener('error', function () {
       if (transcodeStarted || !ffmpegOk) return;
-      maybeAutoTranscode();
+      var err = video.error;
+      if (err && (err.code === 3 || err.code === 4)) {
+        maybeAutoTranscode();
+      }
     });
   }
 
-  if (video && typeof Plyr !== 'undefined') {
-    player = new Plyr(video, {
-      controls: PLYR_CONTROLS,
-      settings: ['quality', 'speed'],
-      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-      ratio: null,
-      fullscreen: { enabled: true, fallback: true, iosNative: true },
-      clickToPlay: true,
-      hideControls: true,
-    });
+  if (video) {
+    unmute(video);
 
-    video.muted = false;
-    video.defaultMuted = false;
-    video.volume = 1;
-    video.removeAttribute('muted');
+    if (typeof Plyr !== 'undefined') {
+      try {
+        player = new Plyr(video, {
+          controls: [
+            'play-large', 'play', 'progress', 'current-time', 'duration',
+            'mute', 'volume', 'settings', 'pip', 'fullscreen',
+          ],
+          settings: ['quality', 'speed'],
+          speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+          ratio: null,
+          fullscreen: { enabled: true, fallback: true, iosNative: true },
+          clickToPlay: true,
+          hideControls: true,
+          resetOnEnd: false,
+          keyboard: { focused: true, global: false },
+        });
 
-    player.on('ready', function () {
+        player.on('ready', function () {
+          unmute(video);
+          bindAudioWatch();
+          if (transcodeFirst) setStatus('AAC', false);
+        });
+
+        player.on('play', function () {
+          unmute(video);
+        });
+      } catch (e) {
+        video.controls = true;
+        bindAudioWatch();
+        if (transcodeFirst) setStatus('AAC', false);
+      }
+    } else {
+      video.controls = true;
       bindAudioWatch();
-      if (transcodeFirst) setStatus('AAC audio', false);
-    });
-
-    player.on('play', function () {
-      video.muted = false;
-      if (video.volume < 1) video.volume = 1;
-    });
-  } else if (video) {
-    bindAudioWatch();
-    if (transcodeFirst) setStatus('AAC audio', false);
+      if (transcodeFirst) setStatus('AAC', false);
+    }
   }
 
-  fixBtn?.addEventListener('click', function () {
-    startTranscode({ forcePlay: true });
-  });
-
-  if (audio && typeof Plyr !== 'undefined') {
-    new Plyr(audio, {
-      controls: ['play', 'progress', 'current-time', 'duration', 'mute', 'volume'],
+  if (fixBtn) {
+    fixBtn.addEventListener('click', function () {
+      startTranscode({ forcePlay: true });
     });
+  }
+
+  if (audio) {
+    unmute(audio);
+    if (typeof Plyr !== 'undefined') {
+      try {
+        new Plyr(audio, {
+          controls: ['play', 'progress', 'current-time', 'duration', 'mute', 'volume'],
+          hideControls: false,
+        });
+      } catch (e) {
+        audio.controls = true;
+      }
+    } else {
+      audio.controls = true;
+    }
   }
 })();

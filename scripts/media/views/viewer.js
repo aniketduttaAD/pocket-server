@@ -41,20 +41,14 @@ function viewerPage(abs, webPath, kind, siblings) {
     const videoSrc = transcodeAudio ? transcodeUrl : rawUrl;
     viewerContent = `<div class="viewer-stage viewer-media">
       <div class="viewer-media-player" id="viewer-media-player">
-        <video id="viewer-video" playsinline preload="metadata" src="${videoSrc}"></video>
+        <video id="viewer-video" playsinline webkit-playsinline preload="metadata" src="${videoSrc}" controls></video>
       </div>
-      <div class="viewer-media-bar" id="viewer-media-bar">
-        <span class="viewer-media-meta">${icon('video')}<span>${esc(ext.slice(1).toUpperCase() || 'Video')}</span></span>
-        <span class="viewer-media-meta">${formatSize(fileSize)}</span>
-        <div class="viewer-media-bar-end">
-          <span class="viewer-media-status" id="viewer-media-status"${transcodeAudio ? '' : ' hidden'}>AAC audio</span>
-          <button type="button" class="viewer-media-action" id="viewer-audio-fix" hidden>Fix audio</button>
-        </div>
-      </div>
+      <span class="viewer-media-status" id="viewer-media-status"${transcodeAudio ? '' : ' hidden'}>AAC</span>
+      <button type="button" class="viewer-audio-fix-btn" id="viewer-audio-fix" hidden>Fix Audio</button>
     </div>`;
-    cdnStyles.push('https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.css');
+    cdnStyles.push('/__assets/vendor/plyr.css');
     cdnScripts.push(
-      'https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.polyfilled.min.js',
+      '/__assets/vendor/plyr.min.js',
       '/__assets/js/viewers/media.js',
     );
   } else if (kind === 'audio') {
@@ -63,12 +57,12 @@ function viewerPage(abs, webPath, kind, siblings) {
         <div class="viewer-audio-art">${icon('audio')}</div>
         <p class="viewer-audio-title">${esc(name)}</p>
         <p class="viewer-audio-meta">${formatSize(fileSize)} · ${esc(ext.slice(1).toUpperCase() || 'Audio')}</p>
-        <audio id="viewer-audio" preload="metadata" src="${rawUrl}"></audio>
+        <audio id="viewer-audio" preload="metadata" src="${rawUrl}" controls></audio>
       </div>
     </div>`;
-    cdnStyles.push('https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.css');
+    cdnStyles.push('/__assets/vendor/plyr.css');
     cdnScripts.push(
-      'https://cdn.jsdelivr.net/npm/plyr@3.7.8/dist/plyr.polyfilled.min.js',
+      '/__assets/vendor/plyr.min.js',
       '/__assets/js/viewers/media.js',
     );
   } else if (kind === 'pdf') {
@@ -113,6 +107,10 @@ function viewerPage(abs, webPath, kind, siblings) {
        <button type="button" class="viewer-chrome-btn primary" id="save-btn" hidden aria-label="Save">${icon('save')}</button>`
     : '';
 
+  const fileMeta = kind === 'video' || kind === 'audio'
+    ? `<span class="viewer-chrome-meta">${esc(ext.slice(1).toUpperCase() || kind.toUpperCase())} · ${formatSize(fileSize)}</span>`
+    : '';
+
   const body = `<div id="viewer-data"
   data-path="${esc(webPath)}"
   data-raw="${esc(rawUrl)}"
@@ -130,7 +128,10 @@ function viewerPage(abs, webPath, kind, siblings) {
 <div class="viewer-immersive viewer-immersive--${kind}">
   <header class="viewer-chrome">
     <a class="viewer-chrome-btn" href="${esc(parent)}" aria-label="Back">${icon('arrowLeft')}</a>
-    <span class="viewer-chrome-title" title="${esc(name)}">${esc(name)}</span>
+    <div class="viewer-chrome-title-wrap">
+      <span class="viewer-chrome-title" title="${esc(name)}">${esc(name)}</span>
+      ${fileMeta}
+    </div>
     <div class="viewer-chrome-actions">
       ${editControls}
       <a class="viewer-chrome-btn" href="${dlUrl}" aria-label="Download">${icon('download')}</a>

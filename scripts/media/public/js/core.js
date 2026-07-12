@@ -1,6 +1,14 @@
 (function (global) {
-  var M = global.MediaLib;
-  if (typeof M !== 'object' || M === null) M = global.MediaLib = {};
+  var M;
+  try {
+    if (typeof global.MediaLib !== 'object' || global.MediaLib === null) {
+      global.MediaLib = {};
+    }
+    M = global.MediaLib;
+  } catch (e) {
+    M = {};
+  }
+  if (typeof M !== 'object' || M === null) M = {};
   try {
     if (typeof global.Media !== 'object' || global.Media === null) global.Media = M;
   } catch (e) { /* window.Media may be read-only in some webviews */ }
