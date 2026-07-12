@@ -46,17 +46,31 @@ window.Media = window.Media || {};
   };
 
   M.openSheet = function (sheetId, backdropId) {
-    M.$(sheetId)?.classList.add('open');
-    M.$(backdropId)?.classList.add('open');
-    document.body.style.overflow = 'hidden';
+    var sheet = M.$(sheetId);
+    var backdrop = M.$(backdropId);
+    if (!sheet || !backdrop) return false;
+    sheet.classList.add('open');
+    backdrop.classList.add('open');
+    backdrop.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('sheet-open');
+    return true;
   };
 
   M.closeSheet = function (sheetId, backdropId) {
     M.$(sheetId)?.classList.remove('open');
     M.$(backdropId)?.classList.remove('open');
+    M.$(backdropId)?.setAttribute('aria-hidden', 'true');
     if (!M.$('.sheet.open') && !M.$('.upload-sheet.open')) {
-      document.body.style.overflow = '';
+      document.body.classList.remove('sheet-open');
     }
+  };
+
+  M.openOptions = function () {
+    return M.openSheet('#filter-sheet', '#options-backdrop');
+  };
+
+  M.closeOptions = function () {
+    M.closeSheet('#filter-sheet', '#options-backdrop');
   };
 
   M.fileKindFromName = function (name) {
@@ -74,6 +88,17 @@ window.Media = window.Media || {};
 
   M.formatSize = M.fmtBytes;
 
+  M.$('#options-toggle')?.addEventListener('click', function (e) {
+    e.preventDefault();
+    if (!M.openOptions()) M.toast('Options not available on this page');
+  });
+  M.$('#bottom-options')?.addEventListener('click', function (e) {
+    e.preventDefault();
+    if (!M.openOptions()) M.toast('Options not available');
+  });
+  M.$('#filter-close')?.addEventListener('click', M.closeOptions);
+  M.$('#options-backdrop')?.addEventListener('click', M.closeOptions);
+
   document.addEventListener('click', function (e) {
     var dl = e.target.closest('[data-action="download"], [data-dl]');
     if (!dl || !dl.dataset.dl) return;
@@ -90,4 +115,4 @@ window.Media = window.Media || {};
     }
     if (M.downloadTracked) M.downloadTracked(url, name, size);
   });
-})(window.Media);
+})();

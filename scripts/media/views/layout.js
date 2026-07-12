@@ -39,7 +39,13 @@ function topnavHtml(options = {}) {
     title = 'Media',
     showBack = false,
     backHref = '/',
+    mode = 'browse',
   } = options;
+
+  const browseActions = mode === 'browse'
+    ? `<button type="button" id="upload-btn-desktop" class="btn ghost icon-only nav-btn desktop-only" aria-label="Upload">${icon('upload')}</button>
+    <button type="button" id="options-toggle" class="btn ghost icon-only nav-btn" aria-label="Options">${icon('filter')}</button>`
+    : '';
 
   return `<header class="topnav">
   <div class="topnav-start">
@@ -50,20 +56,19 @@ function topnavHtml(options = {}) {
     </a>
   </div>
   <div class="topnav-actions">
-    <button type="button" id="upload-btn-desktop" class="btn ghost icon-only nav-btn desktop-only" aria-label="Upload">${icon('upload')}</button>
-    <button type="button" id="options-toggle" class="btn ghost icon-only nav-btn options-btn" aria-label="View options">${icon('filter')}</button>
+    ${browseActions}
     <button type="button" id="transfer-toggle" class="btn ghost icon-only nav-btn transfer-btn" aria-label="Transfers">${icon('activity')}<span id="transfer-badge" class="badge"></span></button>
   </div>
 </header>`;
 }
 
 function bottomNavHtml(options = {}) {
-  const { showBack = false, backHref = '/', page = 'browse' } = options;
+  const { showBack = false, backHref = '/' } = options;
   return `<nav class="bottom-nav mobile-only" aria-label="Main navigation">
-  <a class="bottom-nav-item${page === 'home' ? ' active' : ''}" href="/" aria-label="Home">${icon('home')}<span>Home</span></a>
+  <a class="bottom-nav-item" href="/" aria-label="Home">${icon('home')}<span>Home</span></a>
   ${showBack ? `<a class="bottom-nav-item" href="${esc(backHref)}" aria-label="Back">${icon('arrowLeft')}<span>Back</span></a>` : '<span class="bottom-nav-item disabled" aria-hidden="true">' + icon('arrowLeft') + '<span>Back</span></span>'}
   <button type="button" class="bottom-nav-item" id="bottom-upload" aria-label="Upload">${icon('upload')}<span>Upload</span></button>
-  <button type="button" class="bottom-nav-item" id="bottom-transfers" aria-label="Transfers">${icon('activity')}<span>Files</span></button>
+  <button type="button" class="bottom-nav-item" id="bottom-options" aria-label="Options">${icon('filter')}<span>Options</span></button>
 </nav>`;
 }
 
@@ -99,18 +104,19 @@ function pageShell(title, body, options = {}) {
     showBack = false,
     backHref = '/',
     page = 'browse',
-    hideOptionsBtn = false,
   } = options;
 
   const cdnCss = cdnStyles.map((href) => `<link rel="stylesheet" href="${href}">`).join('\n');
   const cdnJs = cdnScripts.map((src) => `<script src="${src}" defer></script>`).join('\n');
   const modules = moduleScripts.map((src) => `<script type="module" src="${src}"></script>`).join('\n');
+  const navMode = page === 'viewer' ? 'viewer' : 'browse';
 
   return `<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#5aab7a">
+<meta name="theme-color" content="#f5f7f6">
+<meta name="color-scheme" content="light">
 <meta name="apple-mobile-web-app-title" content="Pocket Media">
 <title>${esc(title)}</title>
 <link rel="icon" type="image/png" href="${APP_ICON}">
@@ -121,16 +127,15 @@ function pageShell(title, body, options = {}) {
 ${cssLinks()}
 ${cdnCss}
 </head><body class="${page === 'viewer' ? 'page-viewer' : 'page-browse'}">
-${topnavHtml({ title: options.navTitle || 'Media', showBack, backHref })}
+${topnavHtml({ title: options.navTitle || 'Media', showBack, backHref, mode: navMode })}
 ${body}
 ${extra}
 ${transferPanelHtml()}
-${page === 'browse' ? bottomNavHtml({ showBack, backHref, page: showBack ? 'folder' : 'home' }) : ''}
+${page === 'browse' ? bottomNavHtml({ showBack, backHref }) : ''}
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 ${jsScripts(scripts)}
 ${cdnJs}
 ${modules}
-${hideOptionsBtn ? '' : ''}
 </body></html>`;
 }
 

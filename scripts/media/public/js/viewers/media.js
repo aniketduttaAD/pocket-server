@@ -5,50 +5,30 @@
   var hint = document.getElementById('media-audio-hint');
 
   function showAudioHint() {
-    if (hint) hint.hidden = false;
+    if (hint) hint.classList.add('visible');
   }
 
   if (video) {
-    video.muted = false;
     video.defaultMuted = false;
+    video.muted = false;
     video.volume = 1;
-    video.setAttribute('muted', 'false');
+    video.removeAttribute('muted');
 
-    video.addEventListener('loadedmetadata', function () {
-      var mime = data?.dataset.mime || '';
-      if (mime && video.canPlayType(mime) === '') {
+    video.addEventListener('loadeddata', function () {
+      if (video.audioTracks && video.audioTracks.length === 0) {
         showAudioHint();
       }
     });
 
-    video.addEventListener('volumechange', function () {
-      if (video.muted) {
-        video.muted = false;
-        video.volume = 1;
-      }
-    });
-
-    video.addEventListener('playing', function () {
-      window.setTimeout(function () {
+    video.addEventListener('timeupdate', function onTime() {
+      if (video.currentTime > 2) {
         if (typeof video.webkitAudioDecodedByteCount === 'number'
-          && video.webkitAudioDecodedByteCount === 0
-          && video.currentTime > 1.5
-          && !video.paused) {
+          && video.webkitAudioDecodedByteCount === 0) {
           showAudioHint();
         }
-      }, 2000);
-    });
-
-    video.addEventListener('error', function () {
-      showAudioHint();
-    });
-
-    document.addEventListener('click', function once() {
-      if (video.paused) {
-        video.play().catch(function () {});
+        video.removeEventListener('timeupdate', onTime);
       }
-      document.removeEventListener('click', once);
-    }, { once: true });
+    });
   }
 
   if (audio && typeof Plyr !== 'undefined') {
@@ -56,4 +36,9 @@
       controls: ['play', 'progress', 'current-time', 'duration', 'mute', 'volume'],
     });
   }
+
+  document.getElementById('info-toggle')?.addEventListener('click', function () {
+    var info = document.getElementById('viewer-info');
+    if (info) info.hidden = !info.hidden;
+  });
 })();

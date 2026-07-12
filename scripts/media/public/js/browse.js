@@ -9,11 +9,11 @@
   var bulkCount = M.$('#bulk-count');
 
   function openOptions() {
-    M.openSheet('#filter-sheet', '#filter-backdrop');
+    if (M.openOptions) return M.openOptions();
   }
 
   function closeOptions() {
-    M.closeSheet('#filter-sheet', '#filter-backdrop');
+    if (M.closeOptions) M.closeOptions();
   }
 
   function applyFilters() {
@@ -153,13 +153,10 @@
     if (btn) setView(btn.dataset.view);
   });
 
-  M.$('#options-toggle')?.addEventListener('click', openOptions);
   M.$('#options-upload')?.addEventListener('click', function () {
     closeOptions();
     if (M.openUpload) M.openUpload();
   });
-  M.$('#filter-close')?.addEventListener('click', closeOptions);
-  M.$('#filter-backdrop')?.addEventListener('click', closeOptions);
 
   M.$('#bottom-transfers')?.addEventListener('click', function () {
     if (M.openTransferPanel) M.openTransferPanel();

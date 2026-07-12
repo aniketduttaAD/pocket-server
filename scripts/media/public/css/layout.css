@@ -74,6 +74,8 @@ a { color: inherit; text-decoration: none; }
 .page-viewer #options-toggle,
 .page-viewer #upload-btn-desktop { display: none; }
 
+body.sheet-open { overflow: hidden; }
+
 .mobile-only { display: none; }
 .desktop-only { display: inline-flex; }
 

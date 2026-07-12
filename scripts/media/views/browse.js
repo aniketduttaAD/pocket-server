@@ -205,7 +205,7 @@ function uploadSheetHtml() {
 }
 
 function optionsSheetHtml() {
-  return `<div id="filter-backdrop" class="sheet-backdrop" aria-hidden="true"></div>
+  return `<div id="options-backdrop" class="sheet-backdrop" aria-hidden="true"></div>
 <div id="filter-sheet" class="filter-sheet sheet" role="dialog" aria-label="View options">
   <div class="sheet-head">
     <h3>${icon('filter')} Options</h3>

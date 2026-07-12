@@ -22,7 +22,6 @@ function viewerPage(abs, webPath, kind, siblings) {
 
   const editable = isEditable(name);
   const nav = siblings || { prev: null, next: null };
-  const browserLimitedAudio = ['.mkv', '.avi', '.wmv', '.flv', '.ts', '.m2ts'].includes(ext);
 
   let viewerContent = '';
   let cdnStyles = [];
@@ -39,10 +38,14 @@ function viewerPage(abs, webPath, kind, siblings) {
     );
   } else if (kind === 'video') {
     viewerContent = `<div class="viewer-stage viewer-media">
-      <div id="media-audio-hint" class="media-hint"${browserLimitedAudio ? '' : ' hidden'}>
-        <p>No sound in browser? This format often uses audio codecs (AC3/DTS) that browsers cannot play. <a href="${dlUrl}" data-action="download" data-dl="${dlUrl}" data-name="${esc(name)}" data-size="${fileSize}">Download</a> to play in VLC or your video app.</p>
+      <div id="media-audio-hint" class="media-hint">
+        <strong>No sound in browser?</strong>
+        <span>Many videos (especially WEB-DL MP4s) use EAC3/AC3/DTS audio that browsers cannot decode. Video plays but audio needs an external app.</span>
+        <div class="media-hint-actions">
+          <a class="btn primary sm" href="${dlUrl}" data-action="download" data-dl="${dlUrl}" data-name="${esc(name)}" data-size="${fileSize}">${icon('download')} Download &amp; play in VLC</a>
+        </div>
       </div>
-      <video id="viewer-video" playsinline controls preload="metadata" src="${rawUrl}"></video>
+      <video id="viewer-video" playsinline controls preload="auto" src="${rawUrl}"></video>
     </div>`;
     cdnScripts.push('/__assets/js/viewers/media.js');
   } else if (kind === 'audio') {
@@ -79,53 +82,48 @@ function viewerPage(abs, webPath, kind, siblings) {
     moduleScripts.push('/__assets/js/viewers/editor.js');
   }
 
-  const navBtns = `${nav.prev ? `<a class="btn sm icon-only nav-btn" href="${nav.prev}" aria-label="Previous file">${icon('chevronLeft')}</a>` : '<span class="btn sm icon-only nav-btn disabled" aria-hidden="true">' + icon('chevronLeft') + '</span>'}
-        ${nav.next ? `<a class="btn sm icon-only nav-btn" href="${nav.next}" aria-label="Next file">${icon('chevronRight')}</a>` : '<span class="btn sm icon-only nav-btn disabled" aria-hidden="true">' + icon('chevronRight') + '</span>'}`;
-
-  const moreMenu = `<details class="action-menu">
-      <summary class="btn sm icon-only nav-btn" aria-label="More actions">⋯</summary>
-      <div class="action-menu-panel">
-        <button type="button" class="action-menu-item" id="info-toggle">${icon('info')} File info</button>
-        ${editable ? `<button type="button" class="action-menu-item" id="mode-view">${icon('eye')} View mode</button>
-        <button type="button" class="action-menu-item" id="mode-edit">${icon('edit')} Edit mode</button>
-        <button type="button" class="action-menu-item" id="save-btn">${icon('save')} Save</button>` : ''}
-      </div>
-    </details>`;
+  const prevBtn = nav.prev
+    ? `<a class="viewer-side-nav prev" href="${nav.prev}" aria-label="Previous">${icon('chevronLeft')}</a>`
+    : '';
+  const nextBtn = nav.next
+    ? `<a class="viewer-side-nav next" href="${nav.next}" aria-label="Next">${icon('chevronRight')}</a>`
+    : '';
 
   const body = `<div id="viewer-data"
   data-path="${esc(webPath)}"
   data-raw="${esc(rawUrl)}"
+  data-dl="${esc(dlUrl)}"
   data-kind="${kind}"
   data-mime="${esc(mime)}"
   data-ext="${esc(ext)}"
   data-editable="${editable ? '1' : '0'}"
   data-name="${esc(name)}"
+  data-size="${fileSize}"
   hidden></div>
-<main class="viewer-shell">
-  ${breadcrumbs(parent === '/' ? '' : parent)}
-  <div class="viewer-card card">
-    <div class="viewer-toolbar">
-      <h1 class="viewer-title" title="${esc(name)}">${esc(name)}</h1>
-      <div class="viewer-nav">${navBtns}</div>
-      <div class="viewer-toolbar-actions">
-        <button type="button" class="btn primary sm" data-action="download" data-dl="${dlUrl}" data-name="${esc(name)}" data-size="${fileSize}" aria-label="Download">${icon('download')}</button>
-        ${moreMenu}
-      </div>
-    </div>
-    <div class="viewer-body">${viewerContent}</div>
-    <aside class="viewer-info" id="viewer-info" hidden>
-      <dl>
-        <dt>Size</dt><dd>${formatSize(fileSize)}</dd>
-        <dt>Type</dt><dd>${kind}</dd>
-        <dt>Format</dt><dd>${esc(ext || 'unknown')}</dd>
-        <dt>Modified</dt><dd>${formatDate(mtime)}</dd>
-      </dl>
-    </aside>
+<main class="viewer-page">
+  <div class="viewer-filename" title="${esc(name)}">${esc(name)}</div>
+  <div class="viewer-frame">
+    ${prevBtn}
+    <div class="viewer-content">${viewerContent}</div>
+    ${nextBtn}
   </div>
+  <div class="viewer-footer">
+    <button type="button" class="btn sm" data-action="download" data-dl="${dlUrl}" data-name="${esc(name)}" data-size="${fileSize}">${icon('download')} Download</button>
+    <button type="button" class="btn sm" id="info-toggle">${icon('info')} Info</button>
+    ${editable ? `<button type="button" class="btn sm" id="mode-view">${icon('eye')} View</button><button type="button" class="btn sm" id="mode-edit">${icon('edit')} Edit</button><button type="button" class="btn sm primary" id="save-btn">${icon('save')} Save</button>` : ''}
+  </div>
+  <aside class="viewer-info card" id="viewer-info" hidden>
+    <dl>
+      <dt>Size</dt><dd>${formatSize(fileSize)}</dd>
+      <dt>Type</dt><dd>${kind}</dd>
+      <dt>Format</dt><dd>${esc(ext || 'unknown')}</dd>
+      <dt>Modified</dt><dd>${formatDate(mtime)}</dd>
+    </dl>
+  </aside>
 </main>`;
 
   return pageShell(name, body, {
-    navTitle: name,
+    navTitle: 'Media',
     showBack: true,
     backHref: parent,
     page: 'viewer',

@@ -324,10 +324,34 @@
   max-height: 80vh;
   transform: translateY(100%);
   border-radius: var(--radius) var(--radius) 0 0;
+  z-index: 110;
 }
 
 .filter-sheet.open { transform: translateY(0); }
 .filter-body { padding: 1rem; overflow-y: auto; }
+
+@media (min-width: 768px) {
+  .filter-sheet {
+    top: 50%;
+    left: 50%;
+    bottom: auto;
+    right: auto;
+    width: min(400px, 92vw);
+    max-height: 80vh;
+    transform: translate(-50%, -50%) scale(0.96);
+    border-radius: var(--radius);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .filter-sheet.open {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+#options-backdrop { z-index: 105; }
 
 @media (max-width: 639px) {
   .folder-grid { grid-template-columns: 1fr 1fr; }
