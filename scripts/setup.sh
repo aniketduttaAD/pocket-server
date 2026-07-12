@@ -245,62 +245,47 @@ phase_postgres() {
     initdb -D "$pgdata" --locale=C --encoding=UTF8
   fi
 
-  pg_ctl -D "$pgdata" -l "$HOME/postgres.log" start 2>/dev/null || true
+  if pg_ctl -D "$pgdata" status >/dev/null 2>&1; then
+    echo "PostgreSQL already running."
+  else
+    pg_ctl -D "$pgdata" -l "$HOME/postgres.log" start || true
+  fi
 
   psql -l >/dev/null 2>&1 || die "PostgreSQL failed to start. Check ~/postgres.log"
   echo "PostgreSQL is running."
 }
 
-install_filebrowser() {
-  export GOPATH="${GOPATH:-$HOME/go}"
-  export PATH="$PATH:$GOPATH/bin"
+phase_media() {
+  step "Media server (media.${BASE_DOMAIN})"
+  local media_dir="$HOME/media-server"
+  local media_script="$SCRIPT_DIR/media-server.js"
 
-  if command -v filebrowser >/dev/null 2>&1 && filebrowser version >/dev/null 2>&1; then
-    return 0
-  fi
+  [ -f "$media_script" ] || die "Missing $media_script"
 
-  # Prebuilt Linux binaries use glibc and usually fail on Termux — remove if broken
-  if [ -x "$PREFIX/bin/filebrowser" ] && ! "$PREFIX/bin/filebrowser" version >/dev/null 2>&1; then
-    rm -f "$PREFIX/bin/filebrowser"
-  fi
+  mkdir -p "$media_dir"
+  cp "$media_script" "$media_dir/media-server.js"
 
-  if ! command -v go >/dev/null 2>&1; then
-    echo "Installing Go (required to build File Browser on Termux)..."
-    pkg install -y golang
-  fi
-
-  echo "Building File Browser for Termux (2-5 min)..."
-  go install github.com/filebrowser/filebrowser/v2@latest
-  command -v filebrowser >/dev/null 2>&1 || die "File Browser build failed"
-  filebrowser version >/dev/null 2>&1 || die "File Browser binary not working on Termux"
-}
-
-phase_filebrowser() {
-  step "File Browser (media.${BASE_DOMAIN})"
-  local fb_dir="$HOME/filebrowser"
-  local fb_bin
-
-  install_filebrowser
-  fb_bin="$(command -v filebrowser)"
-
-  cat > "$fb_dir/config.json" << EOF
-{
-  "port": 8080,
-  "baseURL": "",
-  "address": "127.0.0.1",
-  "log": "stdout",
-  "database": "$fb_dir/filebrowser.db",
-  "root": "$MEDIA_ROOT"
-}
+  cat > "$media_dir/env.sh" << EOF
+export MEDIA_HOST=127.0.0.1
+export MEDIA_PORT=8080
+export MEDIA_ROOT=$MEDIA_ROOT
+export MEDIA_USER=$FB_USER
+export MEDIA_PASS=$FB_PASSWORD
 EOF
+  chmod 600 "$media_dir/env.sh"
 
-  filebrowser -c "$fb_dir/config.json" config init 2>/dev/null || true
-  filebrowser -c "$fb_dir/config.json" users add "$FB_USER" "$FB_PASSWORD" --perm.admin 2>/dev/null || \
-    filebrowser -c "$fb_dir/config.json" users update "$FB_USER" --password "$FB_PASSWORD" --perm.admin
+  cat > "$media_dir/run.sh" << EOF
+#!/data/data/com.termux/files/usr/bin/bash
+set -a
+source "$media_dir/env.sh"
+set +a
+exec node "$media_dir/media-server.js"
+EOF
+  chmod 700 "$media_dir/run.sh"
 
-  ensure_pm2_running media "$fb_bin" -c "$fb_dir/config.json"
+  ensure_pm2_running media "$media_dir/run.sh"
   pm2 save
-  echo "File Browser running on 127.0.0.1:8080 (PM2: media)"
+  echo "Media server running on 127.0.0.1:8080 (PM2: media)"
 }
 
 phase_cloudflared() {
@@ -446,7 +431,7 @@ phase_security_check() {
   grep -q 'BIND_HOST=127.0.0.1' "$DASH_DIR/.env" && check "Dashboard bound to localhost" ok || check "Dashboard bound to localhost" fail
   grep -q 'NODE_ENV=production' "$DASH_DIR/.env" && check "Production mode enabled" ok || check "Production mode enabled" fail
   grep -q 'ADMIN_PASSWORD=changeme' "$DASH_DIR/.env" && check "Default password changed" fail || check "Default password changed" ok
-  grep -q '"address".*"127.0.0.1"' "$HOME/filebrowser/config.json" 2>/dev/null && check "File Browser bound to localhost" ok || check "File Browser bound to localhost" fail
+  grep -q 'MEDIA_HOST=127.0.0.1' "$HOME/media-server/env.sh" 2>/dev/null && check "Media server bound to localhost" ok || check "Media server bound to localhost" fail
 
   if pm2 describe dash 2>/dev/null | grep -qE 'status.*online'; then
     check "Dashboard PM2 process running" ok
@@ -523,7 +508,7 @@ main() {
   phase_config
   phase_storage
   phase_postgres
-  phase_filebrowser
+  phase_media
   phase_cloudflared
   phase_dashboard
   phase_security_check || true

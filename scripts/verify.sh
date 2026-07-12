@@ -95,12 +95,12 @@ else
   FAIL=$((FAIL + 1))
 fi
 
-if [ -f "$HOME/filebrowser/config.json" ]; then
-  if grep -q '"address".*"127.0.0.1"' "$HOME/filebrowser/config.json"; then
-    echo "✓ File Browser bound to localhost"
+if [ -f "$HOME/media-server/env.sh" ]; then
+  if grep -q 'MEDIA_HOST=127.0.0.1' "$HOME/media-server/env.sh"; then
+    echo "✓ Media server bound to localhost"
     PASS=$((PASS + 1))
   else
-    echo "✗ File Browser must bind to 127.0.0.1"
+    echo "✗ Media server must bind to 127.0.0.1"
     FAIL=$((FAIL + 1))
   fi
 fi
