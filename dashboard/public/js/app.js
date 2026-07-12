@@ -36,12 +36,12 @@ const App = {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
     document.getElementById('menu-btn')?.addEventListener('click', () => {
-      sidebar.classList.add('open');
-      overlay.classList.remove('hidden');
+      sidebar?.classList.add('open');
+      overlay?.classList.remove('hidden');
     });
     overlay?.addEventListener('click', () => {
-      sidebar.classList.remove('open');
-      overlay.classList.add('hidden');
+      sidebar?.classList.remove('open');
+      overlay?.classList.add('hidden');
     });
 
     document.querySelectorAll('.nav-item').forEach((btn) => {
@@ -49,10 +49,11 @@ const App = {
         document.querySelectorAll('.nav-item').forEach((b) => b.classList.remove('active'));
         document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
         btn.classList.add('active');
-        document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+        const panel = document.getElementById(`tab-${btn.dataset.tab}`);
+        if (panel) panel.classList.add('active');
         App.setPageTitle(btn.dataset.tab);
-        sidebar.classList.remove('open');
-        overlay.classList.add('hidden');
+        sidebar?.classList.remove('open');
+        overlay?.classList.add('hidden');
       });
     });
 
@@ -131,7 +132,8 @@ const App = {
         document.querySelectorAll('.source-tab').forEach((t) => t.classList.remove('active'));
         document.querySelectorAll('.source-panel').forEach((p) => p.classList.remove('active'));
         tab.classList.add('active');
-        document.getElementById(`source-${App.sourceType}`).classList.add('active');
+        const panel = document.getElementById(`source-${App.sourceType}`);
+        if (panel) panel.classList.add('active');
       });
     });
   },
@@ -400,39 +402,42 @@ const App = {
   },
 
   async loadDatabases() {
-    UI.showLoading('databases-list');
-    const data = await this.api('/api/databases');
     const el = document.getElementById('databases-list');
-    const rows = data.stored || [];
-    const justCreated = (() => {
-      try {
-        return JSON.parse(sessionStorage.getItem('db-created') || 'null');
-      } catch {
-        return null;
+    if (!el) return;
+
+    try {
+      UI.showLoading('databases-list');
+      const data = await this.api('/api/databases');
+      const rows = data.stored || [];
+      const justCreated = (() => {
+        try {
+          return JSON.parse(sessionStorage.getItem('db-created') || 'null');
+        } catch {
+          return null;
+        }
+      })();
+
+      const statusEl = document.getElementById('db-provider-status');
+      if (statusEl) {
+        if (!data.live?.ok) {
+          statusEl.textContent = data.live?.error || 'Start PostgreSQL: pg_ctl -D ~/postgres-data start';
+        } else if (data.remoteMode === 'tailscale') {
+          statusEl.innerHTML = `PostgreSQL on this phone. Remote via <strong>Tailscale</strong> at <code>${UI.escapeHtml(data.publicHost || '')}</code> — connect directly from Mac (no cloudflared).`;
+        } else {
+          statusEl.innerHTML = `PostgreSQL on this phone. Remote via Cloudflare — run <code>cloudflared access tcp</code> on your Mac, or set <code>DB_PUBLIC_HOST</code> to your Tailscale IP.`;
+        }
       }
-    })();
 
-    const statusEl = document.getElementById('db-provider-status');
-    if (statusEl) {
-      if (!data.live?.ok) {
-        statusEl.textContent = data.live?.error || 'Start PostgreSQL: pg_ctl -D ~/postgres-data start';
-      } else if (data.remoteMode === 'tailscale') {
-        statusEl.innerHTML = `PostgreSQL on this phone. Remote via <strong>Tailscale</strong> at <code>${UI.escapeHtml(data.publicHost || '')}</code> — connect directly from Mac (no cloudflared).`;
-      } else {
-        statusEl.innerHTML = `PostgreSQL on this phone. Remote via Cloudflare — run <code>cloudflared access tcp</code> on your Mac, or set <code>DB_PUBLIC_HOST</code> to your Tailscale IP.`;
+      if (!rows.length) {
+        el.innerHTML = UI.emptyState('No databases yet', 'Create one above — remote + local URLs appear here');
+        return;
       }
-    }
 
-    if (!rows.length) {
-      el.innerHTML = UI.emptyState('No databases yet', 'Create one above — remote + local URLs appear here');
-      return;
-    }
-
-    el.innerHTML = rows.map((d) => {
-      const remote = d.connection_url || '';
-      const local = d.local_connection_url || remote;
-      const showPassword = justCreated?.dbname === d.dbname && justCreated?.password;
-      return `
+      el.innerHTML = rows.map((d) => {
+        const remote = d.connection_url || '';
+        const local = d.local_connection_url || remote;
+        const showPassword = justCreated?.dbname === d.dbname && justCreated?.password;
+        return `
       <div class="domain-card">
         <div class="domain-head">
           <div>
@@ -464,7 +469,11 @@ const App = {
           <button type="button" class="btn secondary small" data-action="copy" data-copy="${UI.attr(local)}">Copy</button>
         </div>
       </div>`;
-    }).join('');
+      }).join('');
+    } catch (e) {
+      el.innerHTML = UI.emptyState('Failed to load databases', e.message);
+      UI.toast(e.message, 'error');
+    }
   },
 
   async deleteDb(dbname) {

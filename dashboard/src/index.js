@@ -76,13 +76,21 @@ app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
 });
 
-app.use('/css', express.static(path.join(__dirname, '..', 'public', 'css')));
-app.use('/js', express.static(path.join(__dirname, '..', 'public', 'js')));
+app.use('/css', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  next();
+}, express.static(path.join(__dirname, '..', 'public', 'css')));
+app.use('/js', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  next();
+}, express.static(path.join(__dirname, '..', 'public', 'js')));
 app.get('/login.html', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.join(__dirname, '..', 'public', 'login.html'));
 });
 
 app.get('/', requireAuth, (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
