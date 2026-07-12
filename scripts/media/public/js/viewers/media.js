@@ -2,8 +2,8 @@
   var data = document.getElementById('viewer-data');
   var video = document.getElementById('viewer-video');
   var audio = document.getElementById('viewer-audio');
-  var statusEl = document.getElementById('viewer-media-status');
   var fixBtn = document.getElementById('viewer-audio-fix');
+  var loaderEl = document.getElementById('viewer-video-loader');
   var transcodeUrl = data?.dataset.transcode;
   var ffmpegOk = data?.dataset.ffmpeg === '1';
   var transcodeFirst = data?.dataset.transcodeAudio === '1';
@@ -11,16 +11,16 @@
   var player = null;
   var M = window.MediaLib || window.Media || {};
 
-  function setStatus(msg, showFix) {
-    if (!statusEl) return;
-    if (!msg) {
-      statusEl.hidden = true;
-      statusEl.textContent = '';
-      return;
-    }
-    statusEl.hidden = false;
-    statusEl.textContent = msg;
-    if (fixBtn) fixBtn.hidden = !showFix;
+  function showFix(v) { if (fixBtn) fixBtn.hidden = !v; }
+  function showLoader(v) { if (loaderEl) loaderEl.hidden = !v; }
+
+  function unmute(el) {
+    try {
+      el.muted = false;
+      el.defaultMuted = false;
+      el.volume = 1;
+      el.removeAttribute('muted');
+    } catch (e) {}
   }
 
   function startTranscode(opts) {
@@ -29,7 +29,8 @@
     transcodeStarted = true;
     var wasTime = video.currentTime || 0;
     var wasPlaying = opts.forcePlay || !video.paused;
-    setStatus('Converting…', false);
+    showFix(false);
+    showLoader(true);
     video.pause();
     if (player && player.source !== undefined) {
       try {
@@ -42,35 +43,21 @@
     }
     video.load();
     unmute(video);
-    var onReady = function () {
+    video.addEventListener('loadedmetadata', function onReady() {
       video.removeEventListener('loadedmetadata', onReady);
+      showLoader(false);
       if (wasTime > 0 && video.duration && wasTime < video.duration - 1) {
         video.currentTime = wasTime;
       }
-      setStatus('AAC', false);
       if (wasPlaying) {
         var p = video.play();
         if (p && p.catch) p.catch(function () {});
       }
-      if (M.toast) M.toast('Audio converted to AAC');
-    };
-    video.addEventListener('loadedmetadata', onReady, { once: true });
-  }
-
-  function unmute(el) {
-    try {
-      el.muted = false;
-      el.defaultMuted = false;
-      el.volume = 1;
-      el.removeAttribute('muted');
-    } catch (e) {}
+    }, { once: true });
   }
 
   function maybeAutoTranscode() {
-    if (!ffmpegOk || !transcodeUrl) {
-      if (!ffmpegOk) setStatus('No audio — install ffmpeg', false);
-      return;
-    }
+    if (!ffmpegOk || !transcodeUrl) return;
     startTranscode();
   }
 
@@ -98,7 +85,7 @@
         if (decoded === false) {
           maybeAutoTranscode();
         } else if (decoded === null && ffmpegOk) {
-          setStatus('No audio?', true);
+          showFix(true);
         }
       }, 1800);
     });
@@ -123,10 +110,6 @@
     });
   }
 
-  // When transcoding in real-time, the server streams chunked MP4 with no Content-Length.
-  // The browser can't seek, and duration keeps updating as more data arrives.
-  // We poll the transcode URL until it responds with Accept-Ranges (meaning it's cached),
-  // then swap the source so seeking works normally.
   function pollForSeekable() {
     if (!transcodeUrl) return;
     var xhr = new XMLHttpRequest();
@@ -136,7 +119,6 @@
     xhr.onload = function () {
       var ranges = xhr.getResponseHeader('Accept-Ranges');
       if (xhr.status === 200 && ranges && ranges.indexOf('bytes') >= 0) {
-        // Cached! Reload source so user can seek.
         var wasTime = video.currentTime || 0;
         var wasPlaying = !video.paused;
         if (player && typeof player.source !== 'undefined') {
@@ -160,8 +142,7 @@
             var p = video.play();
             if (p && p.catch) p.catch(function () {});
           }
-          setStatus('AAC', false);
-          if (M.toast) M.toast('Video ready — seeking enabled');
+          if (M.toast) M.toast('Seeking now available');
         }, { once: true });
       } else {
         retry();
@@ -174,6 +155,11 @@
 
   if (video) {
     unmute(video);
+    showLoader(true);
+
+    video.addEventListener('canplay', function () { showLoader(false); }, { once: true });
+    video.addEventListener('waiting', function () { showLoader(true); });
+    video.addEventListener('playing', function () { showLoader(false); });
 
     if (typeof Plyr !== 'undefined') {
       try {
@@ -196,31 +182,19 @@
         player.on('ready', function () {
           unmute(video);
           bindAudioWatch();
-          if (transcodeFirst) {
-            setStatus('Converting…', false);
-            // Start polling — once transcode cache is ready the user can seek
-            setTimeout(pollForSeekable, 10000);
-          }
+          if (transcodeFirst) setTimeout(pollForSeekable, 10000);
         });
 
-        player.on('play', function () {
-          unmute(video);
-        });
+        player.on('play', function () { unmute(video); });
       } catch (e) {
         video.controls = true;
         bindAudioWatch();
-        if (transcodeFirst) {
-          setStatus('Converting…', false);
-          setTimeout(pollForSeekable, 10000);
-        }
+        if (transcodeFirst) setTimeout(pollForSeekable, 10000);
       }
     } else {
       video.controls = true;
       bindAudioWatch();
-      if (transcodeFirst) {
-        setStatus('Converting…', false);
-        setTimeout(pollForSeekable, 10000);
-      }
+      if (transcodeFirst) setTimeout(pollForSeekable, 10000);
     }
   }
 
@@ -230,18 +204,17 @@
     });
   }
 
-  // Auto-retry the transcode stream on network errors (e.g. H2 reset, network change)
+  // Auto-retry transcode stream on network errors (H2 reset, network change)
   if (video && transcodeFirst) {
     var retryCount = 0;
     var retryTimer = null;
     video.addEventListener('error', function () {
       var err = video.error;
       if (!err || !transcodeUrl) return;
-      // MEDIA_ERR_NETWORK (2) or MEDIA_ERR_SRC_NOT_SUPPORTED (4) → retry
       if ((err.code === 2 || err.code === 4) && retryCount < 6) {
         var delay = Math.min(3000 * Math.pow(1.8, retryCount), 30000);
         retryCount++;
-        setStatus('Reconnecting…', false);
+        showLoader(true);
         clearTimeout(retryTimer);
         retryTimer = setTimeout(function () {
           var wasTime = video.currentTime || 0;
@@ -250,10 +223,10 @@
           unmute(video);
           video.addEventListener('loadedmetadata', function onMeta() {
             video.removeEventListener('loadedmetadata', onMeta);
+            showLoader(false);
             if (wasTime > 2) { try { video.currentTime = wasTime; } catch (e) {} }
             var p = video.play();
             if (p && p.catch) p.catch(function () {});
-            setStatus('AAC', false);
           }, { once: true });
         }, delay);
       }
@@ -272,6 +245,7 @@
         new Plyr(audio, {
           controls: ['play', 'progress', 'current-time', 'duration', 'mute', 'volume'],
           hideControls: false,
+          iconUrl: '/__assets/vendor/plyr.svg',
         });
       } catch (e) {
         audio.controls = true;

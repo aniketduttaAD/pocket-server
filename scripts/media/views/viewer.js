@@ -41,9 +41,9 @@ function viewerPage(abs, webPath, kind, siblings) {
     const videoSrc = transcodeAudio ? transcodeUrl : rawUrl;
     viewerContent = `<div class="viewer-stage viewer-media">
       <div class="viewer-media-player" id="viewer-media-player">
+        <div class="viewer-video-loader" id="viewer-video-loader" hidden></div>
         <video id="viewer-video" playsinline webkit-playsinline preload="metadata" src="${videoSrc}" controls></video>
       </div>
-      <span class="viewer-media-status" id="viewer-media-status"${transcodeAudio ? '' : ' hidden'}>AAC</span>
       <button type="button" class="viewer-audio-fix-btn" id="viewer-audio-fix" hidden>Fix Audio</button>
     </div>`;
     cdnStyles.push('/__assets/vendor/plyr.css');
@@ -107,9 +107,7 @@ function viewerPage(abs, webPath, kind, siblings) {
        <button type="button" class="viewer-chrome-btn primary" id="save-btn" hidden aria-label="Save">${icon('save')}</button>`
     : '';
 
-  const fileMeta = kind === 'video' || kind === 'audio'
-    ? `<span class="viewer-chrome-meta">${esc(ext.slice(1).toUpperCase() || kind.toUpperCase())} · ${formatSize(fileSize)}</span>`
-    : '';
+  const fileMeta = `<span class="viewer-chrome-meta">${esc(ext.slice(1).toUpperCase() || kind.toUpperCase())} · ${formatSize(fileSize)}</span>`;
 
   let fileMtime = '';
   try {

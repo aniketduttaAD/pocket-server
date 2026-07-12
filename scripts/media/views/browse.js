@@ -45,7 +45,7 @@ function mediaTile(item, galleryData) {
       <div class="tile-media ${thumbClass}">${thumbInner}</div>
       <div class="tile-info">
         <span class="tile-name">${esc(item.name)}</span>
-        <span class="tile-meta"><span class="type-badge">${item.kind}</span> · ${item.size}</span>
+        <span class="tile-meta"><span class="type-badge type-${item.kind}">${item.kind}</span>${item.size}</span>
       </div>
     </a>
     <div class="tile-actions">${viewBtn}${dlBtn}</div>
