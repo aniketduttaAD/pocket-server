@@ -65,8 +65,7 @@ bash ~/phone-server/scripts/verify.sh
 ## Recovery after reboot
 
 ```bash
-sv start postgresql
-sv start cloudflared
+pg_ctl -D ~/postgres-data start
 pm2 resurrect
 pm2 list
 ```

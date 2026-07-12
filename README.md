@@ -145,8 +145,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for details.
 ### After phone reboot
 
 ```bash
-sv start postgresql
-sv start cloudflared
+pg_ctl -D ~/postgres-data start
 pm2 resurrect
 pm2 list
 ```

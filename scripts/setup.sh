@@ -66,6 +66,91 @@ gen_secret() {
   fi
 }
 
+open_browser() {
+  local url="$1"
+  if command -v termux-open-url >/dev/null 2>&1; then
+    termux-open-url "$url"
+  else
+    echo "Open this URL in your browser:"
+    echo "$url"
+  fi
+}
+
+ensure_pm2_running() {
+  local name="$1" bin="$2"
+  shift 2
+  pm2 delete "$name" 2>/dev/null || true
+  pm2 start "$bin" --name "$name" --interpreter none -- "$@"
+  sleep 2
+  if pm2 describe "$name" 2>/dev/null | grep -qE 'status.*online'; then
+    return 0
+  fi
+  echo "PM2 logs for $name:"
+  pm2 logs "$name" --lines 25 --nostream 2>/dev/null || true
+  die "$name failed to start — see logs above"
+}
+
+cf_tunnel_login() {
+  local cf_bin="$1"
+  local cert="$HOME/.cloudflared/cert.pem"
+  if [ -f "$cert" ]; then
+    echo "Cloudflare account already linked."
+    return 0
+  fi
+
+  local log="$HOME/.cloudflared/login.log"
+  mkdir -p "$HOME/.cloudflared"
+  : >"$log"
+
+  echo "Starting Cloudflare login..."
+  "$cf_bin" tunnel login >>"$log" 2>&1 &
+  local pid=$!
+
+  local url="" i
+  for i in $(seq 1 60); do
+    url=$(grep -oE 'https://[^[:space:]]+' "$log" 2>/dev/null | grep -i cloudflare | head -1)
+    [ -n "$url" ] && break
+    sleep 1
+  done
+
+  if [ -n "$url" ]; then
+    echo "Opening Cloudflare login in your phone browser..."
+    open_browser "$url"
+  else
+    echo "Could not detect login URL — opening Cloudflare dashboard..."
+    open_browser "https://dash.cloudflare.com/profile/authentication"
+    echo "If login fails, run manually: $cf_bin tunnel login"
+  fi
+
+  echo "Complete login in browser (select $BASE_DOMAIN), waiting..."
+  for i in $(seq 1 180); do
+    if [ -f "$cert" ]; then
+      wait "$pid" 2>/dev/null || true
+      echo "Cloudflare login successful."
+      return 0
+    fi
+    sleep 2
+  done
+
+  kill "$pid" 2>/dev/null || true
+  die "Cloudflare login timed out. Re-run: bash $SCRIPT_DIR/setup.sh"
+}
+
+cf_tunnel_ensure() {
+  local cf_bin="$1" name="$2"
+  if "$cf_bin" tunnel list 2>/dev/null | grep -qw "$name"; then
+    echo "Tunnel '$name' already exists."
+    return 0
+  fi
+  echo "Creating tunnel '$name'..."
+  "$cf_bin" tunnel create "$name"
+}
+
+cf_tunnel_id() {
+  local cf_bin="$1" name="$2"
+  "$cf_bin" tunnel list 2>/dev/null | awk -v n="$name" '$0 ~ n {print $1; exit}'
+}
+
 # ---------------------------------------------------------------------------
 # Setup phases
 # ---------------------------------------------------------------------------
@@ -136,6 +221,10 @@ phase_packages() {
     npm install -g pm2
   fi
   command -v pm2 >/dev/null 2>&1 || die "PM2 install failed — check network and retry"
+
+  if command -v service-daemon >/dev/null 2>&1; then
+    service-daemon start 2>/dev/null || true
+  fi
 }
 
 phase_storage() {
@@ -158,48 +247,41 @@ phase_postgres() {
 
   pg_ctl -D "$pgdata" -l "$HOME/postgres.log" start 2>/dev/null || true
 
-  mkdir -p "$PREFIX/var/service/postgresql"
-  cat > "$PREFIX/var/service/postgresql/run" << EOF
-#!/data/data/com.termux/files/usr/bin/sh
-exec pg_ctl -D "$pgdata" -l "$HOME/postgres.log" start -W
-EOF
-  chmod +x "$PREFIX/var/service/postgresql/run"
-  sv-enable postgresql 2>/dev/null || true
-  sv start postgresql 2>/dev/null || true
-
   psql -l >/dev/null 2>&1 || die "PostgreSQL failed to start. Check ~/postgres.log"
   echo "PostgreSQL is running."
 }
 
 install_filebrowser() {
-  if command -v filebrowser >/dev/null 2>&1; then
-    return
+  export GOPATH="${GOPATH:-$HOME/go}"
+  export PATH="$PATH:$GOPATH/bin"
+
+  if command -v filebrowser >/dev/null 2>&1 && filebrowser version >/dev/null 2>&1; then
+    return 0
   fi
 
-  local arch fb_arch fb_bin="$PREFIX/bin/filebrowser" tmpdir
-  arch="$(uname -m)"
-  case "$arch" in
-    aarch64|arm64) fb_arch=arm64 ;;
-    armv7l|arm) fb_arch=armv7 ;;
-    *) die "Unsupported CPU architecture for File Browser: $arch" ;;
-  esac
+  # Prebuilt Linux binaries use glibc and usually fail on Termux — remove if broken
+  if [ -x "$PREFIX/bin/filebrowser" ] && ! "$PREFIX/bin/filebrowser" version >/dev/null 2>&1; then
+    rm -f "$PREFIX/bin/filebrowser"
+  fi
 
-  echo "Downloading File Browser ($fb_arch)..."
-  tmpdir="$(mktemp -d)"
-  curl -fsSL "https://github.com/filebrowser/filebrowser/releases/latest/download/linux-${fb_arch}-filebrowser.tar.gz" \
-    -o "$tmpdir/filebrowser.tar.gz"
-  tar -xzf "$tmpdir/filebrowser.tar.gz" -C "$tmpdir"
-  install -m 755 "$tmpdir/filebrowser" "$fb_bin"
-  rm -rf "$tmpdir"
-  hash -r 2>/dev/null || true
-  command -v filebrowser >/dev/null 2>&1 || die "File Browser install failed"
+  if ! command -v go >/dev/null 2>&1; then
+    echo "Installing Go (required to build File Browser on Termux)..."
+    pkg install -y golang
+  fi
+
+  echo "Building File Browser for Termux (2-5 min)..."
+  go install github.com/filebrowser/filebrowser/v2@latest
+  command -v filebrowser >/dev/null 2>&1 || die "File Browser build failed"
+  filebrowser version >/dev/null 2>&1 || die "File Browser binary not working on Termux"
 }
 
 phase_filebrowser() {
   step "File Browser (media.${BASE_DOMAIN})"
   local fb_dir="$HOME/filebrowser"
+  local fb_bin
 
   install_filebrowser
+  fb_bin="$(command -v filebrowser)"
 
   cat > "$fb_dir/config.json" << EOF
 {
@@ -214,10 +296,9 @@ EOF
 
   filebrowser -c "$fb_dir/config.json" config init 2>/dev/null || true
   filebrowser -c "$fb_dir/config.json" users add "$FB_USER" "$FB_PASSWORD" --perm.admin 2>/dev/null || \
-    filebrowser -c "$fb_dir/config.json" users update "$FB_USER" --password "$FB_PASSWORD" --perm.admin 2>/dev/null || true
+    filebrowser -c "$fb_dir/config.json" users update "$FB_USER" --password "$FB_PASSWORD" --perm.admin
 
-  pm2 delete media 2>/dev/null || true
-  pm2 start filebrowser --name media -- -c "$fb_dir/config.json"
+  ensure_pm2_running media "$fb_bin" -c "$fb_dir/config.json"
   pm2 save
   echo "File Browser running on 127.0.0.1:8080 (PM2: media)"
 }
@@ -240,33 +321,17 @@ phase_cloudflared() {
     chmod +x "$cf_bin"
   fi
 
-  if [ -f "$cf_config" ] && grep -q "^tunnel:" "$cf_config" 2>/dev/null; then
-    echo "Existing tunnel config found at $cf_config"
-    TUNNEL_ID="$(basename "$(grep credentials-file "$cf_config" | awk '{print $2}')" .json)"
-    echo "Using tunnel ID: $TUNNEL_ID"
-    return
-  fi
+  if [ ! -f "$cf_config" ] || ! grep -q "^tunnel:" "$cf_config" 2>/dev/null; then
+    cf_tunnel_login "$cf_bin"
+    cf_tunnel_ensure "$cf_bin" "$TUNNEL_NAME"
+    TUNNEL_ID="$(cf_tunnel_id "$cf_bin" "$TUNNEL_NAME")"
+    [ -n "$TUNNEL_ID" ] || die "Could not read tunnel ID — run: $cf_bin tunnel list"
 
-  echo ""
-  echo "Cloudflare tunnel setup (one-time):"
-  echo "  1. Run: $cf_bin tunnel login"
-  echo "     (Authorize in browser — select $BASE_DOMAIN)"
-  echo "  2. Run: $cf_bin tunnel create $TUNNEL_NAME"
-  echo "     (Save the Tunnel UUID printed)"
-  echo ""
-  if ! confirm "Have you completed tunnel login and create?"; then
-    echo ""
-    echo "Run the commands above, then re-run: bash $SCRIPT_DIR/setup.sh"
-    exit 1
-  fi
+    if [ ! -f "$HOME/.cloudflared/${TUNNEL_ID}.json" ]; then
+      die "Credentials missing: ~/.cloudflared/${TUNNEL_ID}.json"
+    fi
 
-  prompt TUNNEL_ID "Enter tunnel UUID"
-
-  if [ ! -f "$HOME/.cloudflared/${TUNNEL_ID}.json" ]; then
-    die "Credentials file not found: ~/.cloudflared/${TUNNEL_ID}.json — run tunnel create first"
-  fi
-
-  cat > "$cf_config" << EOF
+    cat > "$cf_config" << EOF
 tunnel: $TUNNEL_NAME
 credentials-file: $HOME/.cloudflared/${TUNNEL_ID}.json
 ingress:
@@ -277,23 +342,22 @@ ingress:
   - service: http_status:404
 EOF
 
-  echo "Routing DNS..."
-  "$cf_bin" tunnel route dns "$TUNNEL_NAME" "dash.${BASE_DOMAIN}" || true
-  "$cf_bin" tunnel route dns "$TUNNEL_NAME" "media.${BASE_DOMAIN}" || true
+    echo "Routing DNS..."
+    "$cf_bin" tunnel route dns "$TUNNEL_NAME" "dash.${BASE_DOMAIN}" || true
+    "$cf_bin" tunnel route dns "$TUNNEL_NAME" "media.${BASE_DOMAIN}" || true
+  else
+    echo "Existing tunnel config found."
+    TUNNEL_ID="$(basename "$(grep credentials-file "$cf_config" | awk '{print $2}')" .json)"
+    echo "Using tunnel ID: $TUNNEL_ID"
+  fi
 
-  mkdir -p "$PREFIX/var/service/cloudflared"
-  cat > "$PREFIX/var/service/cloudflared/run" << EOF
-#!/data/data/com.termux/files/usr/bin/sh
-exec $cf_bin tunnel run $TUNNEL_NAME >> $HOME/cloudflared.log 2>&1
-EOF
-  chmod +x "$PREFIX/var/service/cloudflared/run"
-  sv-enable cloudflared 2>/dev/null || true
-  sv start cloudflared 2>/dev/null || true
-  echo "Cloudflare tunnel service started."
+  ensure_pm2_running tunnel "$cf_bin" tunnel run "$TUNNEL_NAME"
+  pm2 save
+  echo "Cloudflare tunnel running (PM2: tunnel)"
 }
 
 phase_dashboard() {
-  step "Dashboard (dash.aniketdutta.space)"
+  step "Dashboard (dash.${BASE_DOMAIN})"
   if [ ! -f "$DASH_SRC/src/index.js" ]; then
     die "Dashboard source not found at $DASH_SRC — clone the full phone-server repo"
   fi
@@ -358,8 +422,7 @@ EOF
 
   cd "$DASH_DIR"
   npm install --production
-  pm2 delete dash 2>/dev/null || true
-  pm2 start src/index.js --name dash
+  ensure_pm2_running dash node src/index.js
   pm2 save
 
   echo "Dashboard running on 127.0.0.1:3000 (PM2: dash)"
@@ -385,16 +448,22 @@ phase_security_check() {
   grep -q 'ADMIN_PASSWORD=changeme' "$DASH_DIR/.env" && check "Default password changed" fail || check "Default password changed" ok
   grep -q '"address".*"127.0.0.1"' "$HOME/filebrowser/config.json" 2>/dev/null && check "File Browser bound to localhost" ok || check "File Browser bound to localhost" fail
 
-  if pgrep -f cloudflared >/dev/null 2>&1 || sv status cloudflared 2>/dev/null | grep -q run; then
-    check "Cloudflare tunnel running" ok
-  else
-    check "Cloudflare tunnel running" fail
-  fi
-
-  if pm2 describe dash >/dev/null 2>&1; then
+  if pm2 describe dash 2>/dev/null | grep -qE 'status.*online'; then
     check "Dashboard PM2 process running" ok
   else
     check "Dashboard PM2 process running" fail
+  fi
+
+  if pm2 describe media 2>/dev/null | grep -qE 'status.*online'; then
+    check "File Browser PM2 process running" ok
+  else
+    check "File Browser PM2 process running" fail
+  fi
+
+  if pm2 describe tunnel 2>/dev/null | grep -qE 'status.*online'; then
+    check "Cloudflare tunnel running" ok
+  else
+    check "Cloudflare tunnel running" fail
   fi
 
   echo ""
@@ -426,7 +495,7 @@ phase_done() {
   echo "  bash $SCRIPT_DIR/backup.sh        # backup data"
   echo ""
   echo "After phone reboot:"
-  echo "  sv start postgresql && sv start cloudflared && pm2 resurrect"
+  echo "  pg_ctl -D ~/postgres-data start && pm2 resurrect"
 }
 
 # ---------------------------------------------------------------------------

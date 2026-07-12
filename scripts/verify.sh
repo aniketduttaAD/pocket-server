@@ -84,7 +84,10 @@ if [ -x "$HOME/cloudflared" ]; then
   check "cloudflared binary" "$HOME/cloudflared" -v
 fi
 
-if pgrep -f cloudflared >/dev/null 2>&1 || sv status cloudflared 2>/dev/null | grep -q run; then
+if pm2 describe tunnel 2>/dev/null | grep -qE 'status.*online'; then
+  echo "✓ Cloudflare tunnel running (PM2)"
+  PASS=$((PASS + 1))
+elif pgrep -f cloudflared >/dev/null 2>&1; then
   echo "✓ Cloudflare tunnel running"
   PASS=$((PASS + 1))
 else
