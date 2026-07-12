@@ -1,0 +1,8 @@
+tunnel: phone-tunnel
+credentials-file: /data/data/com.termux/files/home/.cloudflared/TUNNEL_ID.json
+ingress:
+  - hostname: dash.aniketdutta.space
+    service: http://127.0.0.1:3000
+  - hostname: media.aniketdutta.space
+    service: http://127.0.0.1:8080
+  - service: http_status:404

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phone Server Dashboard</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-icon">⬡</span>
+        <div>
+          <strong>Phone Server</strong>
+          <small id="sidebar-domain">aniketdutta.space</small>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="overview">Overview</button>
+        <button class="nav-item" data-tab="services">Services</button>
+        <button class="nav-item" data-tab="projects">Projects</button>
+        <button class="nav-item" data-tab="domains">Domains</button>
+        <button class="nav-item" data-tab="databases">Databases</button>
+        <button class="nav-item" data-tab="commands">Commands</button>
+        <button class="nav-item" data-tab="settings">Settings</button>
+      </nav>
+      <button id="logout-btn" class="btn secondary sidebar-logout">Logout</button>
+    </aside>
+
+    <div class="sidebar-overlay hidden" id="sidebar-overlay"></div>
+
+    <div class="main-area">
+      <header class="topbar">
+        <button id="menu-btn" class="icon-btn mobile-only" aria-label="Menu">☰</button>
+        <div class="topbar-title">
+          <h1 id="page-title">Overview</h1>
+          <span id="refresh-indicator" class="hint"></span>
+        </div>
+        <button id="refresh-btn" class="btn secondary small">Refresh</button>
+      </header>
+
+      <main class="content">
+        <!-- Overview -->
+        <section id="tab-overview" class="panel active">
+          <div class="stats-grid" id="stats-grid"></div>
+          <div class="two-col">
+            <div class="card">
+              <div class="card-header"><h2>Health</h2></div>
+              <div id="health-grid"></div>
+            </div>
+            <div class="card">
+              <div class="card-header"><h2>Security checklist</h2></div>
+              <div id="security-checks"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h2>Public URLs</h2></div>
+            <div id="public-urls"></div>
+          </div>
+        </section>
+
+        <!-- Services -->
+        <section id="tab-services" class="panel">
+          <div class="card">
+            <div class="card-header">
+              <h2>PM2 Services</h2>
+              <label class="toggle-label"><input type="checkbox" id="auto-refresh"> Auto-refresh</label>
+            </div>
+            <div id="services-list"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2>Logs</h2>
+              <select id="log-service-select" class="inline-select"><option value="">Select service…</option></select>
+            </div>
+            <pre id="logs-output" class="log-box">Select a service to view logs.</pre>
+          </div>
+        </section>
+
+        <!-- Projects -->
+        <section id="tab-projects" class="panel">
+          <div class="card">
+            <div class="card-header"><h2>Add project</h2></div>
+            <div class="wizard-steps">
+              <span class="wizard-step active" data-step="1">1. Info</span>
+              <span class="wizard-step" data-step="2">2. Source</span>
+              <span class="wizard-step" data-step="3">3. Deploy</span>
+            </div>
+            <form id="project-form">
+              <div class="wizard-panel active" data-panel="1">
+                <div class="form-grid">
+                  <label>Name <input name="name" required pattern="[a-zA-Z0-9][a-zA-Z0-9-_]{0,62}"></label>
+                  <label>Type
+                    <select name="type"><option value="frontend">Frontend</option><option value="backend">Backend</option></select>
+                  </label>
+                </div>
+                <button type="button" class="btn wizard-next">Next</button>
+              </div>
+              <div class="wizard-panel" data-panel="2">
+                <div class="source-tabs">
+                  <button type="button" class="source-tab active" data-source="upload">Upload .zip</button>
+                  <button type="button" class="source-tab" data-source="git">Git clone</button>
+                  <button type="button" class="source-tab" data-source="empty">Empty folder</button>
+                </div>
+                <div id="source-upload" class="source-panel active">
+                  <label class="full">Archive <input name="archive" type="file" accept=".zip"></label>
+                </div>
+                <div id="source-git" class="source-panel">
+                  <label class="full">Git URL <input name="gitUrl" placeholder="https://github.com/user/repo.git"></label>
+                </div>
+                <div id="source-empty" class="source-panel"><p class="hint">Creates an empty project folder.</p></div>
+                <div class="wizard-actions">
+                  <button type="button" class="btn secondary wizard-prev">Back</button>
+                  <button type="button" class="btn wizard-next">Next</button>
+                </div>
+              </div>
+              <div class="wizard-panel" data-panel="3">
+                <div class="form-grid">
+                  <label>Port <input name="port" type="number" min="1024" max="65535" placeholder="Auto-assign next free port"></label>
+                  <label>Subdomain <input name="subdomain" placeholder="Defaults to project name"></label>
+                  <label class="full">Start command <input name="command" placeholder="npm start"></label>
+                </div>
+                <p class="hint" id="port-hint">Ports are unique per project. Blank means auto-assign.</p>
+                <div class="wizard-actions">
+                  <button type="button" class="btn secondary wizard-prev">Back</button>
+                  <button type="submit" class="btn">Create project</button>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="card">
+            <div class="card-header"><h2>Projects</h2></div>
+            <div id="projects-list"></div>
+          </div>
+        </section>
+
+        <!-- Domains -->
+        <section id="tab-domains" class="panel">
+          <div class="card">
+            <div class="card-header"><h2>Add domain route</h2></div>
+            <form id="domain-form" class="form-inline">
+              <input name="hostname" placeholder="app3" required>
+              <input name="serviceName" placeholder="project/service name">
+              <input name="port" type="number" min="1024" max="65535" placeholder="optional if project">
+              <button type="submit" class="btn">Add route</button>
+            </form>
+            <p class="hint">For projects, the dashboard uses the project's allocated port. Admin routes (`dash`, `media`) stay behind Cloudflare Access; app routes are public but protected by Cloudflare/WAF.</p>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2>Domains</h2>
+              <button class="btn secondary small" onclick="App.verifyAllDomains()">Verify all</button>
+            </div>
+            <div id="domains-list"></div>
+          </div>
+        </section>
+
+        <!-- Databases -->
+        <section id="tab-databases" class="panel">
+          <div class="card">
+            <div class="card-header"><h2>Create database</h2></div>
+            <form id="db-form" class="form-inline">
+              <input name="dbname" placeholder="myapp_db" required pattern="[a-zA-Z][a-zA-Z0-9_]{0,62}">
+              <input name="username" placeholder="myapp_user">
+              <input name="password" placeholder="auto-generated if empty">
+              <button type="submit" class="btn">Create</button>
+            </form>
+          </div>
+          <div class="card hidden" id="db-result">
+            <div class="card-header"><h2>New connection URL</h2></div>
+            <div class="copy-row">
+              <pre id="db-connection" class="code-block"></pre>
+              <button type="button" class="btn secondary small" id="copy-db-url">Copy</button>
+            </div>
+            <p class="hint">Save this now — treat it like a secret.</p>
+          </div>
+          <div class="card">
+            <div class="card-header"><h2>Databases</h2></div>
+            <div id="databases-list"></div>
+          </div>
+        </section>
+
+        <!-- Commands -->
+        <section id="tab-commands" class="panel">
+          <div class="card">
+            <div class="card-header"><h2>Allowlisted commands</h2></div>
+            <p class="hint">Only preset commands run for security. No raw shell access.</p>
+            <form id="terminal-form" class="form-grid">
+              <label>Command <select name="preset" id="preset-select"></select></label>
+              <label>Project (auto-fills cwd) <select id="project-cwd-select"><option value="">—</option></select></label>
+              <label>PM2 service <select id="pm2-service-select"><option value="">—</option></select></label>
+              <button type="button" class="btn secondary" id="pm2-restart-btn">Restart service</button>
+              <label class="full">Working directory <input name="cwd" id="cwd-input" placeholder="/path/to/project"></label>
+              <button type="submit" class="btn">Run command</button>
+            </form>
+            <pre id="terminal-output" class="log-box"></pre>
+          </div>
+        </section>
+
+        <!-- Settings -->
+        <section id="tab-settings" class="panel">
+          <div class="card">
+            <div class="card-header"><h2>Server configuration</h2></div>
+            <div id="settings-info"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h2>Actions</h2></div>
+            <div class="actions">
+              <button class="btn secondary" onclick="App.runBackup()">Run backup</button>
+              <button class="btn secondary" onclick="App.verifyAllDomains()">Verify DNS</button>
+              <a class="btn secondary" href="https://developers.cloudflare.com/cloudflare-one/" target="_blank" rel="noopener">Cloudflare docs</a>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <div id="confirm-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3 id="confirm-title">Confirm</h3>
+      <p id="confirm-message"></p>
+      <div class="modal-actions">
+        <button id="confirm-cancel" class="btn secondary">Cancel</button>
+        <button id="confirm-ok" class="btn danger">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/components.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
