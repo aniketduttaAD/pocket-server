@@ -8,6 +8,29 @@ const { serveFile } = require('./serve');
 let ffmpegAvailable = null;
 const activeJobs = new Map();
 
+// Every 6 hours wipe all completed transcode caches.
+// Skips any file that belongs to an actively-running job so in-progress
+// transcodes are never interrupted. Does NOT run on startup so cache
+// from a previous server session is reused immediately.
+function evictAllCache() {
+  try {
+    const dir = UPLOAD_TMP;
+    if (!fs.existsSync(dir)) return;
+    const activeFiles = new Set();
+    for (const job of activeJobs.values()) {
+      activeFiles.add(job.cache);
+      activeFiles.add(job.partial);
+    }
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith('tx-')) continue;
+      const abs = path.join(dir, f);
+      if (activeFiles.has(abs)) continue;
+      try { fs.unlinkSync(abs); } catch {}
+    }
+  } catch {}
+}
+setInterval(evictAllCache, 6 * 60 * 60 * 1000).unref();
+
 function isFfmpegAvailable() {
   if (ffmpegAvailable !== null) return ffmpegAvailable;
   try {

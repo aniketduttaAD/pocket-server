@@ -8,6 +8,28 @@ const { sendJson, readBody, readJsonBody, formatSize } = require('./util');
 
 fs.mkdirSync(UPLOAD_TMP, { recursive: true });
 
+// Clean up abandoned chunked-upload sessions older than 2 hours.
+// Runs every hour so a stalled 10 GB upload doesn't squat on storage forever.
+function evictStaleUploads() {
+  try {
+    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+    for (const entry of fs.readdirSync(UPLOAD_TMP, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(UPLOAD_TMP, entry.name);
+      const manifest = path.join(dir, 'manifest.json');
+      try {
+        const m = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+        if ((m.created || 0) < cutoff) fs.rm(dir, { recursive: true, force: true }, () => {});
+      } catch {
+        // No manifest or unreadable — stale, remove it
+        try { fs.rm(dir, { recursive: true, force: true }, () => {}); } catch {}
+      }
+    }
+  } catch {}
+}
+evictStaleUploads();
+setInterval(evictStaleUploads, 60 * 60 * 1000).unref();
+
 function parseMultipart(buffer, boundary) {
   const delim = Buffer.from(`--${boundary}`);
   const parts = [];
@@ -164,8 +186,10 @@ async function handleUploadChunk(req, res, uploadId, chunkIndex) {
   const chunkPath = path.join(dir, String(idx));
   try {
     const size = await streamToFile(req, chunkPath, CHUNK_SIZE + 1024 * 1024);
-    manifest.received[String(idx)] = size;
-    fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+    // Re-read manifest before writing to avoid clobbering concurrent chunk writes
+    const fresh = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+    fresh.received[String(idx)] = size;
+    fs.writeFileSync(manifestFile, JSON.stringify(fresh));
     return sendJson(res, 200, { ok: true, chunk: idx, size });
   } catch (err) {
     fs.unlink(chunkPath, () => {});

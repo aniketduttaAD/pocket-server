@@ -22,9 +22,22 @@ function serveFile(req, res, abs, download) {
 
     const type = mimeType(abs);
     const filename = path.basename(abs);
+    const etag = `"${st.size}-${Math.floor(st.mtimeMs)}"`;
+    const lastMod = new Date(st.mtimeMs).toUTCString();
+
+    // Conditional request: return 304 if client has current version
+    if (req.headers['if-none-match'] === etag ||
+        req.headers['if-modified-since'] === lastMod) {
+      res.writeHead(304);
+      return res.end();
+    }
+
     const headers = {
       'Content-Type': type,
       'Accept-Ranges': 'bytes',
+      'ETag': etag,
+      'Last-Modified': lastMod,
+      'Cache-Control': type.startsWith('image/') ? 'public, max-age=300, stale-while-revalidate=60' : 'no-store',
     };
 
     if (download) {
