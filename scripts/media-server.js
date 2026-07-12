@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 /**
  * Media library for Termux (127.0.0.1 only).
- * Env: MEDIA_HOST, MEDIA_PORT, MEDIA_ROOT, MEDIA_USER, MEDIA_PASS, MEDIA_MAX_UPLOAD_MB
+ * Env: MEDIA_HOST, MEDIA_PORT, MEDIA_ROOT, MEDIA_USER, MEDIA_PASS, MEDIA_MAX_UPLOAD_MB (default 10240)
  */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 const { execFile } = require('child_process');
+const { pipeline } = require('stream/promises');
+const crypto = require('crypto');
 const os = require('os');
 
 const HOST = process.env.MEDIA_HOST || '127.0.0.1';
@@ -15,7 +17,11 @@ const PORT = parseInt(process.env.MEDIA_PORT || '8080', 10);
 const ROOT = path.resolve(process.env.MEDIA_ROOT || path.join(process.env.HOME || '', 'storage/shared'));
 const USER = process.env.MEDIA_USER || 'admin';
 const PASS = process.env.MEDIA_PASS || '';
-const MAX_UPLOAD_BYTES = parseInt(process.env.MEDIA_MAX_UPLOAD_MB || '200', 10) * 1024 * 1024;
+const MAX_UPLOAD_BYTES = parseInt(process.env.MEDIA_MAX_UPLOAD_MB || '10240', 10) * 1024 * 1024;
+const CHUNK_SIZE = 48 * 1024 * 1024; // stay under Cloudflare ~100MB per request
+const UPLOAD_TMP = path.join(os.tmpdir(), 'media-uploads');
+
+fs.mkdirSync(UPLOAD_TMP, { recursive: true });
 
 const MIME = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -155,6 +161,203 @@ function uniqueName(dir, name) {
   return candidate;
 }
 
+function sanitizeFilename(name) {
+  const base = path.basename(name).replace(/[^\w.\- ()[\]]+/g, '_');
+  return base && !base.startsWith('.') ? base : null;
+}
+
+function streamToFile(req, targetPath, maxBytes) {
+  return new Promise((resolve, reject) => {
+    let received = 0;
+    let aborted = false;
+    const ws = fs.createWriteStream(targetPath);
+
+    const fail = (err) => {
+      if (aborted) return;
+      aborted = true;
+      req.destroy();
+      ws.destroy();
+      fs.unlink(targetPath, () => {});
+      reject(err);
+    };
+
+    req.on('data', (chunk) => {
+      received += chunk.length;
+      if (received > maxBytes) {
+        fail(new Error('File exceeds upload limit'));
+      }
+    });
+    req.on('error', fail);
+    ws.on('error', fail);
+    ws.on('finish', () => {
+      if (!aborted) resolve(received);
+    });
+
+    req.pipe(ws);
+  });
+}
+
+function handleStreamUpload(req, res, absDir, filename) {
+  const safeName = sanitizeFilename(filename);
+  if (!safeName) {
+    return sendJson(res, 400, { error: 'Invalid filename' });
+  }
+
+  const finalName = uniqueName(absDir, safeName);
+  const target = path.join(absDir, finalName);
+  if (!target.startsWith(ROOT)) {
+    return sendJson(res, 403, { error: 'Forbidden path' });
+  }
+
+  const cl = parseInt(req.headers['content-length'] || '0', 10);
+  if (cl > MAX_UPLOAD_BYTES) {
+    return sendJson(res, 413, { error: `Max upload size is ${formatSize(MAX_UPLOAD_BYTES)}` });
+  }
+
+  streamToFile(req, target, MAX_UPLOAD_BYTES)
+    .then((size) => sendJson(res, 200, { ok: true, name: finalName, size }))
+    .catch((err) => {
+      if (err.message.includes('limit')) {
+        return sendJson(res, 413, { error: err.message });
+      }
+      sendJson(res, 500, { error: err.message || 'Upload failed' });
+    });
+}
+
+function uploadManifestPath(uploadId) {
+  return path.join(UPLOAD_TMP, uploadId, 'manifest.json');
+}
+
+function uploadChunkDir(uploadId) {
+  return path.join(UPLOAD_TMP, uploadId);
+}
+
+async function handleUploadInit(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (err) {
+    return sendJson(res, 400, { error: 'Invalid JSON' });
+  }
+
+  const dirPath = body.dir || '/';
+  const absDir = safePath(dirPath.endsWith('/') ? dirPath : `${dirPath}/`);
+  if (!absDir) return sendJson(res, 403, { error: 'Invalid folder' });
+
+  let st;
+  try {
+    st = fs.statSync(absDir);
+  } catch {
+    return sendJson(res, 404, { error: 'Folder not found' });
+  }
+  if (!st.isDirectory()) return sendJson(res, 400, { error: 'Not a folder' });
+
+  const filename = sanitizeFilename(body.filename || '');
+  if (!filename) return sendJson(res, 400, { error: 'Invalid filename' });
+
+  const totalSize = parseInt(body.totalSize, 10) || 0;
+  const totalChunks = parseInt(body.totalChunks, 10) || 0;
+  if (totalSize <= 0 || totalSize > MAX_UPLOAD_BYTES) {
+    return sendJson(res, 413, { error: `Max upload size is ${formatSize(MAX_UPLOAD_BYTES)}` });
+  }
+  if (totalChunks <= 0 || totalChunks > 10000) {
+    return sendJson(res, 400, { error: 'Invalid chunk count' });
+  }
+
+  const uploadId = crypto.randomBytes(12).toString('hex');
+  const dir = uploadChunkDir(uploadId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(uploadManifestPath(uploadId), JSON.stringify({
+    dir: dirPath,
+    filename,
+    totalSize,
+    totalChunks,
+    received: {},
+    created: Date.now(),
+  }));
+
+  return sendJson(res, 200, { ok: true, uploadId, chunkSize: CHUNK_SIZE });
+}
+
+async function handleUploadChunk(req, res, uploadId, chunkIndex) {
+  const dir = uploadChunkDir(uploadId);
+  const manifestFile = uploadManifestPath(uploadId);
+  if (!fs.existsSync(manifestFile)) {
+    return sendJson(res, 404, { error: 'Upload session not found' });
+  }
+
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+  const idx = parseInt(chunkIndex, 10);
+  if (Number.isNaN(idx) || idx < 0 || idx >= manifest.totalChunks) {
+    return sendJson(res, 400, { error: 'Invalid chunk index' });
+  }
+
+  const chunkPath = path.join(dir, String(idx));
+  try {
+    const size = await streamToFile(req, chunkPath, CHUNK_SIZE + 1024 * 1024);
+    manifest.received[String(idx)] = size;
+    fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+    return sendJson(res, 200, { ok: true, chunk: idx, size });
+  } catch (err) {
+    fs.unlink(chunkPath, () => {});
+    return sendJson(res, 500, { error: err.message || 'Chunk upload failed' });
+  }
+}
+
+async function mergeUploadChunks(uploadId) {
+  const manifestFile = uploadManifestPath(uploadId);
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+  const dir = uploadChunkDir(uploadId);
+
+  for (let i = 0; i < manifest.totalChunks; i += 1) {
+    const cp = path.join(dir, String(i));
+    if (!fs.existsSync(cp)) {
+      throw new Error(`Missing chunk ${i}`);
+    }
+  }
+
+  const absDir = safePath(manifest.dir.endsWith('/') ? manifest.dir : `${manifest.dir}/`);
+  if (!absDir) throw new Error('Invalid folder');
+
+  const finalName = uniqueName(absDir, manifest.filename);
+  const target = path.join(absDir, finalName);
+  if (!target.startsWith(ROOT)) throw new Error('Forbidden path');
+
+  const ws = fs.createWriteStream(target);
+  for (let i = 0; i < manifest.totalChunks; i += 1) {
+    await pipeline(fs.createReadStream(path.join(dir, String(i))), ws, { end: false });
+  }
+  await new Promise((resolve, reject) => {
+    ws.end((err) => (err ? reject(err) : resolve()));
+  });
+
+  const st = fs.statSync(target);
+  fs.rm(dir, { recursive: true, force: true }, () => {});
+  return { name: finalName, size: st.size, path: `${manifest.dir}${encodeURIComponent(finalName)}` };
+}
+
+async function handleUploadComplete(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch {
+    return sendJson(res, 400, { error: 'Invalid JSON' });
+  }
+
+  const uploadId = body.uploadId;
+  if (!uploadId || !/^[a-f0-9]+$/.test(uploadId)) {
+    return sendJson(res, 400, { error: 'Invalid upload id' });
+  }
+
+  try {
+    const result = await mergeUploadChunks(uploadId);
+    return sendJson(res, 200, { ok: true, ...result });
+  } catch (err) {
+    return sendJson(res, 400, { error: err.message || 'Could not finalize upload' });
+  }
+}
+
+/** Legacy multipart — small multi-file only; large files use PUT/chunks from client */
 async function handleUpload(req, res, absDir, webPath) {
   const ct = req.headers['content-type'] || '';
   const m = /boundary=(.+)/i.exec(ct);
@@ -162,9 +365,14 @@ async function handleUpload(req, res, absDir, webPath) {
     return sendJson(res, 400, { error: 'Expected multipart/form-data' });
   }
 
+  const cl = parseInt(req.headers['content-length'] || '0', 10);
+  if (cl > 100 * 1024 * 1024) {
+    return sendJson(res, 413, { error: 'Use single-file upload for files over 100MB' });
+  }
+
   let buffer;
   try {
-    buffer = await readBody(req, MAX_UPLOAD_BYTES);
+    buffer = await readBody(req, 100 * 1024 * 1024);
   } catch (err) {
     return sendJson(res, 413, { error: err.message || 'Upload too large' });
   }
@@ -174,8 +382,8 @@ async function handleUpload(req, res, absDir, webPath) {
 
   for (const part of parts) {
     if (!part.filename || !part.data.length) continue;
-    const safeName = path.basename(part.filename).replace(/[^\w.\- ()[\]]+/g, '_');
-    if (!safeName || safeName.startsWith('.')) continue;
+    const safeName = sanitizeFilename(part.filename);
+    if (!safeName) continue;
     const finalName = uniqueName(absDir, safeName);
     const target = path.join(absDir, finalName);
     if (!target.startsWith(ROOT)) continue;
@@ -337,6 +545,32 @@ a{color:inherit;text-decoration:none}
 .bulk-count{font-size:.8125rem;font-weight:600;flex:1}
 .toast-msg{position:fixed;bottom:calc(var(--bulk-h) + .75rem);left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--page);padding:.5rem 1rem;border-radius:8px;font-size:.8125rem;opacity:0;transition:all .2s;z-index:50;pointer-events:none}
 .toast-msg.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.transfer-eye-btn{position:relative;width:36px;height:36px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.transfer-eye-btn:hover{background:var(--page)}
+.transfer-eye-btn.has-active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(37,99,235,.15)}
+.transfer-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--primary);color:#fff;font-size:.625rem;font-weight:700;display:none;align-items:center;justify-content:center;line-height:16px}
+.transfer-badge.show{display:flex}
+.transfer-panel{position:fixed;top:0;right:0;width:min(380px,100vw);height:100vh;background:var(--surface);border-left:1px solid var(--border);z-index:200;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column;box-shadow:-8px 0 30px rgba(0,0,0,.12)}
+.transfer-panel.open{transform:translateX(0)}
+.transfer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:199;opacity:0;pointer-events:none;transition:opacity .2s}
+.transfer-backdrop.open{opacity:1;pointer-events:auto}
+.transfer-head{display:flex;align-items:center;gap:.5rem;padding:.85rem 1rem;border-bottom:1px solid var(--border)}
+.transfer-head h3{font-size:.875rem;font-weight:700;flex:1}
+.transfer-list{flex:1;overflow-y:auto;padding:.5rem}
+.transfer-item{padding:.65rem .75rem;border:1px solid var(--border);border-radius:10px;margin-bottom:.5rem;background:var(--page)}
+.transfer-item.done{border-color:#22c55e33;background:rgba(34,197,94,.06)}
+.transfer-item.error{border-color:#ef444433;background:rgba(239,68,68,.06)}
+.transfer-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem}
+.transfer-icon{font-size:.875rem;width:20px;text-align:center;flex-shrink:0}
+.transfer-name{font-size:.75rem;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.transfer-status{font-size:.625rem;font-weight:700;text-transform:uppercase;color:var(--muted);flex-shrink:0}
+.transfer-item.done .transfer-status{color:#16a34a}
+.transfer-item.error .transfer-status{color:#dc2626}
+.transfer-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.transfer-bar>span{display:block;height:100%;background:var(--primary);width:0%;transition:width .15s}
+.transfer-meta{display:flex;justify-content:space-between;margin-top:.3rem;font-size:.625rem;color:var(--muted)}
+.transfer-empty{padding:2rem 1rem;text-align:center;color:var(--muted);font-size:.8125rem}
+.topnav-actions{display:flex;align-items:center;gap:.35rem}
 @media(max-width:640px){
   .shell{padding:.5rem .65rem 1.5rem}
   .gallery{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
@@ -351,18 +585,260 @@ const CLIENT_JS = `
 (function(){
   const $=function(s,r){return(r||document).querySelector(s)};
   const $$=function(s,r){return Array.from((r||document).querySelectorAll(s))};
-  const toast=function(msg){const t=$('#toast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(function(){t.classList.remove('show');},2800);};
+  const CHUNK_SIZE=48*1024*1024;
+  const CHUNK_THRESHOLD=80*1024*1024;
+  const MAX_BLOB_DL=250*1024*1024;
+
+  const toast=function(msg){const t=$('#toast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(function(){t.classList.remove('show');},3200);};
+
+  function fmtBytes(n){
+    n=+n||0;
+    if(n<1024)return n+' B';
+    if(n<1048576)return(n/1024).toFixed(1)+' KB';
+    if(n<1073741824)return(n/1048576).toFixed(1)+' MB';
+    return(n/1073741824).toFixed(2)+' GB';
+  }
+  function fmtSpeed(bps){
+    if(!bps||bps<1)return '';
+    return fmtBytes(bps)+'/s';
+  }
+  function pct(done,total){return total?Math.min(100,Math.round((done/total)*100)):0;}
 
   const webPath=$('#page-data')?.dataset.webPath||'/';
   const search=$('#search');
   const filterKind=$('#filter-kind');
   const sortBy=$('#sort-by');
-  const viewMode=$('#view-mode');
   const uploadZone=$('#upload-zone');
   const fileInput=$('#file-input');
   const bulkBar=$('#bulk-bar');
   const bulkCount=$('#bulk-count');
   const selected=new Set();
+  const transfers=[];
+  let reloadPending=false;
+
+  function saveTransfers(){
+    try{sessionStorage.setItem('mediaTransfers',JSON.stringify(transfers.slice(0,50)));}catch(e){}
+  }
+  function loadTransfers(){
+    try{
+      const raw=sessionStorage.getItem('mediaTransfers');
+      if(raw){JSON.parse(raw).forEach(function(t){if(t.status==='active')t.status='error',t.error='Interrupted';transfers.push(t);});}
+    }catch(e){}
+  }
+
+  function activeCount(){return transfers.filter(function(t){return t.status==='active';}).length;}
+
+  function updateBadge(){
+    const badge=$('#transfer-badge');
+    const btn=$('#transfer-toggle');
+    const n=activeCount();
+    if(!badge)return;
+    if(n>0){badge.textContent=String(n);badge.classList.add('show');btn?.classList.add('has-active');}
+    else{badge.classList.remove('show');btn?.classList.remove('has-active');}
+  }
+
+  function renderTransfers(){
+    const list=$('#transfer-list');
+    if(!list)return;
+    if(!transfers.length){list.innerHTML='<div class="transfer-empty">No uploads or downloads yet</div>';updateBadge();return;}
+    list.innerHTML=transfers.map(function(t){
+      const p=pct(t.done,t.total);
+      const st=t.status==='active'?(p+'%'):(t.status==='done'?'Done':(t.error||'Failed'));
+      return '<div class="transfer-item '+t.status+'" data-id="'+t.id+'">'+
+        '<div class="transfer-row"><span class="transfer-icon">'+(t.type==='upload'?'↑':'↓')+'</span>'+
+        '<span class="transfer-name" title="'+t.name.replace(/"/g,'&quot;')+'">'+t.name+'</span>'+
+        '<span class="transfer-status">'+st+'</span></div>'+
+        '<div class="transfer-bar"><span style="width:'+p+'%"></span></div>'+
+        '<div class="transfer-meta"><span>'+fmtBytes(t.done)+(t.total?' / '+fmtBytes(t.total):'')+'</span>'+
+        '<span>'+(t.status==='active'&&t.speed?fmtSpeed(t.speed):'')+'</span></div></div>';
+    }).join('');
+    updateBadge();
+    saveTransfers();
+  }
+
+  function addTransfer(item){
+    transfers.unshift(item);
+    if(transfers.length>80)transfers.length=80;
+    renderTransfers();
+    openTransferPanel();
+  }
+
+  function setTransfer(id,patch){
+    const t=transfers.find(function(x){return x.id===id;});
+    if(!t)return;
+    Object.assign(t,patch);
+    renderTransfers();
+  }
+
+  function openTransferPanel(){
+    $('#transfer-panel')?.classList.add('open');
+    $('#transfer-backdrop')?.classList.add('open');
+  }
+  function closeTransferPanel(){
+    $('#transfer-panel')?.classList.remove('open');
+    $('#transfer-backdrop')?.classList.remove('open');
+  }
+
+  $('#transfer-toggle')?.addEventListener('click',function(){
+    if($('#transfer-panel')?.classList.contains('open'))closeTransferPanel();else openTransferPanel();
+  });
+  $('#transfer-close')?.addEventListener('click',closeTransferPanel);
+  $('#transfer-backdrop')?.addEventListener('click',closeTransferPanel);
+  $('#transfer-clear')?.addEventListener('click',function(){
+    for(var i=transfers.length-1;i>=0;i--){if(transfers[i].status!=='active')transfers.splice(i,1);}
+    renderTransfers();
+  });
+
+  function xhrPut(url,blob,onProgress){
+    return new Promise(function(resolve,reject){
+      var xhr=new XMLHttpRequest();
+      var lastDone=0,lastT=Date.now();
+      xhr.upload.onprogress=function(e){
+        if(e.lengthComputable&&onProgress){
+          var now=Date.now(),dt=(now-lastT)/1000;
+          var speed=0;
+          if(dt>0.35){speed=(e.loaded-lastDone)/dt;lastDone=e.loaded;lastT=now;}
+          onProgress(e.loaded,e.total,speed);
+        }
+      };
+      xhr.onload=function(){
+        if(xhr.status>=200&&xhr.status<300){
+          try{resolve(JSON.parse(xhr.responseText||'{}'));}catch(e){resolve({ok:true});}
+        }else{
+          try{reject(new Error(JSON.parse(xhr.responseText).error||('HTTP '+xhr.status)));}catch(e){reject(new Error('HTTP '+xhr.status));}
+        }
+      };
+      xhr.onerror=function(){reject(new Error('Connection reset — try again or use chunked upload'));}
+      xhr.ontimeout=function(){reject(new Error('Upload timed out'));}
+      xhr.timeout=0;
+      xhr.open('PUT',url);
+      xhr.setRequestHeader('Content-Type','application/octet-stream');
+      xhr.send(blob);
+    });
+  }
+
+  function xhrGetBlob(url,onProgress){
+    return new Promise(function(resolve,reject){
+      var xhr=new XMLHttpRequest();
+      var lastDone=0,lastT=Date.now();
+      xhr.open('GET',url);
+      xhr.responseType='blob';
+      xhr.onprogress=function(e){
+        if(e.lengthComputable&&onProgress){
+          var now=Date.now(),dt=(now-lastT)/1000,speed=0;
+          if(dt>0.35){speed=(e.loaded-lastDone)/dt;lastDone=e.loaded;lastT=now;}
+          onProgress(e.loaded,e.total,speed);
+        }
+      };
+      xhr.onload=function(){
+        if(xhr.status>=200&&xhr.status<300)resolve(xhr.response);
+        else reject(new Error('Download failed (HTTP '+xhr.status+')'));
+      };
+      xhr.onerror=function(){reject(new Error('Connection reset during download'));};
+      xhr.send();
+    });
+  }
+
+  async function uploadDirect(file,t){
+    var url=(webPath.endsWith('/')?webPath:webPath+'/')+encodeURIComponent(file.name)+'?upload=1';
+    await xhrPut(url,file,function(done,total,speed){
+      setTransfer(t.id,{done:done,total:total,speed:speed});
+    });
+    setTransfer(t.id,{status:'done',done:file.size,total:file.size,speed:0});
+  }
+
+  async function uploadChunked(file,t){
+    var totalChunks=Math.ceil(file.size/CHUNK_SIZE);
+    var initRes=await fetch('/__upload/init',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dir:webPath,filename:file.name,totalSize:file.size,totalChunks:totalChunks})});
+    var initData=await initRes.json();
+    if(!initRes.ok)throw new Error(initData.error||'Chunk init failed');
+    var uploadId=initData.uploadId;
+    for(var i=0;i<totalChunks;i++){
+      var start=i*CHUNK_SIZE;
+      var chunk=file.slice(start,start+CHUNK_SIZE);
+      var chunkUrl='/__upload/chunk/'+uploadId+'/'+i;
+      await xhrPut(chunkUrl,chunk,function(done){
+        setTransfer(t.id,{done:start+done,total:file.size});
+      });
+    }
+    var doneRes=await fetch('/__upload/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uploadId:uploadId})});
+    var doneData=await doneRes.json();
+    if(!doneRes.ok)throw new Error(doneData.error||'Finalize failed');
+    setTransfer(t.id,{status:'done',done:file.size,total:file.size,speed:0});
+  }
+
+  async function uploadOne(file){
+    var id='u-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);
+    var t={id:id,name:file.name,type:'upload',total:file.size,done:0,speed:0,status:'active',error:null};
+    addTransfer(t);
+    try{
+      if(file.size>CHUNK_THRESHOLD)await uploadChunked(file,t);
+      else await uploadDirect(file,t);
+      reloadPending=true;
+    }catch(e){
+      setTransfer(id,{status:'error',error:e.message||'Upload failed',speed:0});
+      throw e;
+    }
+  }
+
+  async function uploadFiles(files){
+    if(!files.length)return;
+    openTransferPanel();
+    var ok=0,fail=0;
+    for(var i=0;i<files.length;i++){
+      try{await uploadOne(files[i]);ok++;}
+      catch(e){fail++;}
+    }
+    if(fileInput)fileInput.value='';
+    if(ok)toast('Uploaded '+ok+' file(s)'+(fail?(', '+fail+' failed'):''));
+    else toast(fail+' upload(s) failed');
+    if(reloadPending&&ok)setTimeout(function(){location.reload();},800);
+  }
+
+  async function downloadTracked(url,name,sizeHint){
+    var id='d-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);
+    var t={id:id,name:name,type:'download',total:sizeHint||0,done:0,speed:0,status:'active',error:null};
+    addTransfer(t);
+    try{
+      if(sizeHint>MAX_BLOB_DL&&window.showSaveFilePicker){
+        var handle=await window.showSaveFilePicker({suggestedName:name});
+        var writable=await handle.createWritable();
+        var res=await fetch(url);
+        if(!res.ok)throw new Error('Download failed');
+        var total=+(res.headers.get('content-length')||sizeHint||0);
+        if(total)setTransfer(id,{total:total});
+        var reader=res.body.getReader();
+        var done=0,lastDone=0,lastT=Date.now();
+        while(true){
+          var chunk=await reader.read();
+          if(chunk.done)break;
+          await writable.write(chunk.value);
+          done+=chunk.value.length;
+          var now=Date.now(),dt=(now-lastT)/1000,speed=0;
+          if(dt>0.35){speed=(done-lastDone)/dt;lastDone=done;lastT=now;}
+          setTransfer(id,{done:done,total:total||done,speed:speed});
+        }
+        await writable.close();
+      }else{
+        var blob=await xhrGetBlob(url,function(done,total,speed){
+          setTransfer(id,{done:done,total:total||sizeHint||0,speed:speed});
+        });
+        var a=document.createElement('a');
+        a.href=URL.createObjectURL(blob);
+        a.download=name;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+      setTransfer(id,{status:'done',speed:0});
+      toast('Downloaded '+name);
+    }catch(e){
+      if(e.name!=='AbortError'){
+        setTransfer(id,{status:'error',error:e.message||'Download failed',speed:0});
+        window.open(url+'?download=1','_blank');
+        toast('Fallback download opened for '+name);
+      }else setTransfer(id,{status:'error',error:'Cancelled',speed:0});
+    }
+  }
 
   function applyFilters(){
     const term=(search?.value||'').trim().toLowerCase();
@@ -443,25 +919,49 @@ const CLIENT_JS = `
   $('#bulk-download')?.addEventListener('click',async function(){
     const paths=Array.from(selected);
     if(!paths.length)return;
+    var id='d-bulk-'+Date.now();
+    addTransfer({id:id,name:paths.length+' files.zip',type:'download',total:0,done:0,speed:0,status:'active',error:null});
     try{
       const res=await fetch('/__bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paths:paths})});
       if(res.headers.get('content-type')?.includes('application/json')){
         const data=await res.json();
         if(data.fallback){
-          data.fallback.forEach(function(u,i){setTimeout(function(){window.open(u,'_blank');},i*300);});
-          toast('Downloading '+data.fallback.length+' files…');
+          setTransfer(id,{status:'done',name:paths.length+' files (individual)'});
+          for(var i=0;i<data.fallback.length;i++){
+            (function(u,idx){
+              setTimeout(function(){
+                var el=$('[data-path="'+paths[idx]+'"]');
+                downloadTracked(u,el?.dataset?.name||('file-'+idx),+(el?.dataset?.size||0));
+              },idx*400);
+            })(data.fallback[i],i);
+          }
           return;
         }
         throw new Error(data.error||'Download failed');
       }
-      const blob=await res.blob();
-      const a=document.createElement('a');
+      var total=+(res.headers.get('content-length')||0);
+      if(total)setTransfer(id,{total:total});
+      var reader=res.body.getReader();
+      var chunks=[],done=0;
+      while(true){
+        var part=await reader.read();
+        if(part.done)break;
+        chunks.push(part.value);
+        done+=part.value.length;
+        setTransfer(id,{done:done,total:total||done});
+      }
+      var blob=new Blob(chunks,{type:'application/zip'});
+      var a=document.createElement('a');
       a.href=URL.createObjectURL(blob);
       a.download='media-'+paths.length+'-files.zip';
       a.click();
       URL.revokeObjectURL(a.href);
-      toast('Download started');
-    }catch(e){toast(e.message||'Download failed');}
+      setTransfer(id,{status:'done',done:done,total:done,speed:0});
+      toast('Zip download started');
+    }catch(e){
+      setTransfer(id,{status:'error',error:e.message||'Download failed'});
+      toast(e.message||'Download failed');
+    }
   });
 
   function toggleUpload(show){
@@ -469,26 +969,6 @@ const CLIENT_JS = `
   }
   $('#upload-btn')?.addEventListener('click',function(){toggleUpload(!uploadZone?.classList.contains('open'));});
   $('#upload-cancel')?.addEventListener('click',function(){toggleUpload(false);});
-
-  async function uploadFiles(files){
-    if(!files.length)return;
-    const fd=new FormData();
-    for(const f of files) fd.append('files',f);
-    const prog=$('#upload-progress');
-    const bar=$('#upload-progress bar');
-    if(prog){prog.style.display='block';if(bar)bar.style.width='30%';}
-    try{
-      const res=await fetch(webPath,{method:'POST',body:fd});
-      const data=await res.json();
-      if(!res.ok) throw new Error(data.error||'Upload failed');
-      if(bar)bar.style.width='100%';
-      toast('Uploaded '+data.count+' file(s)');
-      setTimeout(function(){location.reload();},600);
-    }catch(e){
-      toast(e.message||'Upload failed');
-      if(prog)prog.style.display='none';
-    }
-  }
 
   fileInput?.addEventListener('change',function(){uploadFiles(Array.from(fileInput.files||[]));});
   uploadZone?.addEventListener('dragover',function(e){e.preventDefault();uploadZone.classList.add('dragover');});
@@ -499,8 +979,20 @@ const CLIENT_JS = `
   });
 
   $$('[data-dl]').forEach(function(btn){
-    btn.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();window.location.href=btn.dataset.dl;});
+    btn.addEventListener('click',function(e){
+      e.preventDefault();e.stopPropagation();
+      var url=btn.dataset.dl;
+      var name=btn.dataset.name||itemNameFromUrl(url);
+      var size=+(btn.dataset.size||0);
+      if(!size){
+        var item=btn.closest('.media-item');
+        size=+(item?.dataset?.size||0);
+        if(!btn.dataset.name&&item)name=item.dataset.name||name;
+      }
+      downloadTracked(url,name,size);
+    });
   });
+  function itemNameFromUrl(url){try{return decodeURIComponent(url.split('/').pop().split('?')[0]);}catch(e){return 'download';}}
 
   const images=JSON.parse($('#gallery-data')?.textContent||'[]');
   const videos=JSON.parse($('#video-data')?.textContent||'[]');
@@ -518,7 +1010,7 @@ const CLIENT_JS = `
       const it=images[idx];
       img.src=it.raw; title.textContent=it.name;
       const dl=imgModal.querySelector('[data-dl]');
-      if(dl) dl.dataset.dl=it.view+'?download=1';
+      if(dl){dl.dataset.dl=it.view+'?download=1';dl.dataset.size='0';}
       prev.disabled=images.length<2; next.disabled=images.length<2;
     }
     function openAt(i){show(i);imgModal.classList.add('open');document.body.style.overflow='hidden';}
@@ -535,6 +1027,11 @@ const CLIENT_JS = `
       if(e.key==='Escape')close();
       if(e.key==='ArrowLeft')show(idx-1);
       if(e.key==='ArrowRight')show(idx+1);
+    });
+    imgModal.querySelector('[data-dl]')?.addEventListener('click',function(e){
+      e.preventDefault();e.stopPropagation();
+      const it=images[idx];
+      downloadTracked(it.view+'?download=1',it.name,0);
     });
   }
 
@@ -557,11 +1054,39 @@ const CLIENT_JS = `
     vidModal.querySelector('[data-close]')?.addEventListener('click',vclose);
     vidModal.addEventListener('click',function(e){if(e.target===vidModal)vclose();});
     document.addEventListener('keydown',function(e){if(vidModal.classList.contains('open')&&e.key==='Escape')vclose();});
+    vidModal.querySelector('[data-dl]')?.addEventListener('click',function(e){
+      e.preventDefault();e.stopPropagation();
+      const it=videos[vidx];
+      downloadTracked(it.view+'?download=1',it.name,0);
+    });
   }
 
+  loadTransfers();
+  renderTransfers();
   applyFilters();
 })();
 `;
+
+function transferPanelHtml() {
+  return `<div id="transfer-backdrop" class="transfer-backdrop"></div>
+<aside id="transfer-panel" class="transfer-panel" aria-label="Transfer queue">
+  <div class="transfer-head">
+    <h3>Transfers</h3>
+    <button type="button" class="btn sm" id="transfer-clear">Clear done</button>
+    <button type="button" class="btn sm" id="transfer-close">Close</button>
+  </div>
+  <div class="transfer-list" id="transfer-list"></div>
+</aside>`;
+}
+
+function topnavHtml() {
+  return `<div class="topnav">
+  <span class="topnav-title">📁 Media Library</span>
+  <div class="topnav-actions">
+    <button type="button" id="transfer-toggle" class="transfer-eye-btn" title="View uploads &amp; downloads" aria-label="View transfers">👁<span id="transfer-badge" class="transfer-badge"></span></button>
+  </div>
+</div>`;
+}
 
 function pageShell(title, body, extra = '') {
   return `<!DOCTYPE html>
@@ -571,8 +1096,10 @@ function pageShell(title, body, extra = '') {
 <title>${esc(title)}</title>
 <style>${CSS}</style>
 </head><body>
+${topnavHtml()}
 ${body}
 ${extra}
+${transferPanelHtml()}
 <div id="toast" class="toast-msg"></div>
 <script>${CLIENT_JS}</script>
 </body></html>`;
@@ -678,8 +1205,7 @@ function listDir(abs, webPath) {
     ? webPath.replace(/\/[^/]+\/?$/, '') || '/'
     : null;
 
-  let body = `<div class="topnav"><span class="topnav-title">📁 Media Library</span></div>
-<div id="page-data" data-web-path="${esc(webPath)}" hidden></div>
+  let body = `<div id="page-data" data-web-path="${esc(webPath)}" hidden></div>
 <div class="shell">
 <div class="header">
   ${breadcrumbs(webPath.endsWith('/') ? webPath.slice(0, -1) || '/' : webPath)}
@@ -712,8 +1238,8 @@ function listDir(abs, webPath) {
     <button type="button" class="btn sm" id="select-all">Select all</button>
   </div>
   <div class="upload-zone" id="upload-zone">
-    <p>Drop files here or tap to browse</p>
-    <input type="file" id="file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.json,.csv,.zip">
+    <p>Drop files here or tap to browse — up to 10 GB per file</p>
+    <input type="file" id="file-input" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.json,.csv,.zip,.mkv,.avi,.mov,.mp4">
     <div class="upload-progress" id="upload-progress"><bar></bar></div>
     <button type="button" class="btn sm" id="upload-cancel" style="margin-top:.5rem">Close</button>
   </div>
@@ -778,6 +1304,10 @@ function viewerPage(abs, webPath, kind, siblings) {
   const rawUrl = `${webPath}?raw=1`;
   const dlUrl = `${webPath}?download=1`;
   const parent = webPath.replace(/\/[^/]+$/, '') || '/';
+  let fileSize = 0;
+  try {
+    fileSize = fs.statSync(abs).size;
+  } catch { /* ignore */ }
   let media = '';
 
   if (kind === 'image') {
@@ -799,7 +1329,7 @@ function viewerPage(abs, webPath, kind, siblings) {
 
   const nav = siblings || { prev: null, next: null };
 
-  const body = `<div class="topnav"><span class="topnav-title">📁 Media</span></div><div class="viewer-shell">
+  const body = `<div class="viewer-shell">
   ${breadcrumbs(parent === '/' ? '' : parent)}
   <div class="viewer-card">
     <div class="viewer-bar">
@@ -807,7 +1337,7 @@ function viewerPage(abs, webPath, kind, siblings) {
       ${nav.prev ? `<a class="btn sm" href="${nav.prev}">← Prev</a>` : ''}
       ${nav.next ? `<a class="btn sm" href="${nav.next}">Next →</a>` : ''}
       <a class="btn sm" href="${parent}">Folder</a>
-      <a class="btn primary sm" href="${dlUrl}">Download</a>
+      <button type="button" class="btn primary sm" data-dl="${dlUrl}" data-name="${esc(name)}" data-size="${fileSize}">Download</button>
     </div>
     <div class="viewer-body">${media}</div>
   </div>
@@ -892,6 +1422,19 @@ const server = http.createServer(async (req, res) => {
 
   if (!authOk(req)) return send401(res);
 
+  if (u.pathname === '/__upload/init' && req.method === 'POST') {
+    return handleUploadInit(req, res);
+  }
+
+  if (u.pathname === '/__upload/complete' && req.method === 'POST') {
+    return handleUploadComplete(req, res);
+  }
+
+  const chunkMatch = /^\/__upload\/chunk\/([a-f0-9]+)\/(\d+)$/.exec(u.pathname);
+  if (chunkMatch && req.method === 'PUT') {
+    return handleUploadChunk(req, res, chunkMatch[1], chunkMatch[2]);
+  }
+
   if (u.pathname === '/__bulk' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
@@ -909,6 +1452,17 @@ const server = http.createServer(async (req, res) => {
 
   const raw = u.searchParams.has('raw');
   const download = u.searchParams.has('download');
+  const isUpload = u.searchParams.has('upload');
+
+  if (req.method === 'PUT' && isUpload) {
+    const filename = decodeURIComponent(path.basename(u.pathname));
+    const absDir = path.dirname(abs);
+    if (!absDir.startsWith(ROOT)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      return res.end('Forbidden');
+    }
+    return handleStreamUpload(req, res, absDir, filename);
+  }
 
   if (req.method === 'POST') {
     return fs.stat(abs, async (err, st) => {
@@ -920,7 +1474,7 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, { 'Content-Type': 'text/plain' });
     return res.end('Method not allowed');
   }
@@ -953,6 +1507,11 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
+server.timeout = 0;
+server.keepAliveTimeout = 0;
+server.headersTimeout = 0;
+if (typeof server.requestTimeout !== 'undefined') server.requestTimeout = 0;
+
 server.listen(PORT, HOST, () => {
-  console.log(`Media server http://${HOST}:${PORT} root=${ROOT}`);
+  console.log(`Media server http://${HOST}:${PORT} root=${ROOT} maxUpload=${formatSize(MAX_UPLOAD_BYTES)}`);
 });

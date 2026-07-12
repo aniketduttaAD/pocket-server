@@ -354,6 +354,7 @@ export MEDIA_PORT=8080
 export MEDIA_ROOT=$MEDIA_ROOT
 export MEDIA_USER=$FB_USER
 export MEDIA_PASS=$FB_PASSWORD
+export MEDIA_MAX_UPLOAD_MB=10240
 EOF
   chmod 600 "$media_dir/env.sh"
 
