@@ -151,6 +151,70 @@ cf_tunnel_id() {
   "$cf_bin" tunnel list 2>/dev/null | awk -v n="$name" '$0 ~ n {print $1; exit}'
 }
 
+default_media_root() {
+  if [ -d "$HOME/storage/shared" ]; then
+    echo "$HOME/storage/shared"
+  elif [ -d "$HOME/storage/downloads" ]; then
+    echo "$HOME/storage/downloads"
+  else
+    echo "$HOME/storage/shared"
+  fi
+}
+
+expand_path() {
+  local p="$1"
+  p="${p/#\~/$HOME}"
+  printf '%s' "$p"
+}
+
+validate_media_root() {
+  local raw="$1"
+  local path parent
+
+  path="$(expand_path "$raw")"
+
+  if [ -e "$path" ]; then
+    if [ ! -d "$path" ]; then
+      echo "Not a directory: $path"
+      return 1
+    fi
+  else
+    parent="$(dirname "$path")"
+    if [ ! -d "$parent" ]; then
+      echo "Path not found: $path"
+      echo "Use ~/storage/shared (run termux-setup-storage first)"
+      return 1
+    fi
+    if ! mkdir -p "$path" 2>/dev/null; then
+      echo "Permission denied: $path"
+      echo "Use ~/storage/shared instead of /storage/emulated/*"
+      return 1
+    fi
+  fi
+
+  if [ ! -r "$path" ] || [ ! -x "$path" ]; then
+    echo "Cannot read: $path — grant storage access (termux-setup-storage)"
+    return 1
+  fi
+
+  MEDIA_ROOT="$(cd "$path" && pwd -P 2>/dev/null || cd "$path" && pwd)"
+  return 0
+}
+
+list_storage_options() {
+  echo "Available storage paths:"
+  local p found=false
+  for p in "$HOME/storage/shared" "$HOME/storage/downloads" "$HOME/storage/dcim"; do
+    if [ -d "$p" ] && [ -r "$p" ]; then
+      echo "  ✓ $p"
+      found=true
+    fi
+  done
+  if [ "$found" = false ]; then
+    echo "  (none yet — run termux-setup-storage and tap Allow)"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Setup phases
 # ---------------------------------------------------------------------------
@@ -190,9 +254,9 @@ phase_config() {
     break
   done
 
-  prompt FB_USER "File Browser username" "aniket"
+  prompt FB_USER "Media username" "aniket"
   while true; do
-    prompt FB_PASSWORD "File Browser password (min 8 chars)" "" true
+    prompt FB_PASSWORD "Media password (min 8 chars)" "" true
     if [ "${#FB_PASSWORD}" -lt 8 ]; then
       echo "Password must be at least 8 characters."
       continue
@@ -200,9 +264,9 @@ phase_config() {
     break
   done
 
-  prompt MEDIA_ROOT "Media files root on phone" "/storage/emulated/0/ServerFiles"
   SESSION_SECRET="$(gen_secret)"
   echo "Generated SESSION_SECRET."
+  echo "Media folder path is set in the next step (after storage access)."
 }
 
 phase_packages() {
@@ -231,9 +295,28 @@ phase_storage() {
   step "Storage access"
   echo "Granting storage permission (tap Allow if Android prompts)..."
   termux-setup-storage || true
+
   mkdir -p "$HOME/projects/frontend" "$HOME/projects/backend" "$HOME/uploads"
-  mkdir -p "$HOME/filebrowser" "$HOME/logs" "$HOME/.cloudflared" "$HOME/backups"
-  mkdir -p "$MEDIA_ROOT"
+  mkdir -p "$HOME/logs" "$HOME/.cloudflared" "$HOME/backups" "$HOME/media-server"
+
+  echo ""
+  list_storage_options
+  echo ""
+  echo "Recommended: ~/storage/shared  (internal storage via Termux)"
+  echo ""
+
+  local default
+  default="$(default_media_root)"
+
+  while true; do
+    prompt MEDIA_ROOT "Media files root" "$default"
+    if validate_media_root "$MEDIA_ROOT"; then
+      echo "Using media root: $MEDIA_ROOT"
+      break
+    fi
+    echo "Try again."
+    default="$(default_media_root)"
+  done
 }
 
 phase_postgres() {
@@ -348,7 +431,7 @@ EOF
     echo "Using tunnel ID: $TUNNEL_ID"
   fi
 
-  ensure_pm2_running tunnel "$cf_bin" --name tunnel --interpreter none -- tunnel run "$TUNNEL_NAME"
+  ensure_pm2_running tunnel "$cf_bin" --name tunnel --interpreter none -- tunnel --config "$cf_config" run "$TUNNEL_NAME"
   pm2 save
   echo "Cloudflare tunnel running (PM2: tunnel)"
 }
@@ -452,9 +535,9 @@ phase_security_check() {
   fi
 
   if pm2 describe media 2>/dev/null | grep -qE 'status.*online'; then
-    check "File Browser PM2 process running" ok
+    check "Media PM2 process running" ok
   else
-    check "File Browser PM2 process running" fail
+    check "Media PM2 process running" fail
   fi
 
   if pm2 describe tunnel 2>/dev/null | grep -qE 'status.*online'; then

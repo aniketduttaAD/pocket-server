@@ -1,13 +1,5 @@
 # Phone Setup (Termux)
 
-All setup runs **on your Android phone** via a single interactive script.
-
-## Prerequisites
-
-1. Install [Termux from F-Droid](https://f-droid.org/en/packages/com.termux/) (not Play Store).
-2. Disable battery optimization for Termux.
-3. Domain added to Cloudflare with active nameservers.
-
 ## One-command setup
 
 ```bash
@@ -16,66 +8,63 @@ cd ~/phone-server/scripts
 bash setup.sh
 ```
 
-The wizard installs and configures everything:
+## What setup installs
 
-| Step | What it does |
-|------|--------------|
-| Packages | Node.js, PM2, PostgreSQL, Go, cloudflared deps |
-| Storage | `termux-setup-storage`, creates `~/projects`, `~/uploads`, etc. |
-| PostgreSQL | Init, Termux service, auto-start |
-| File Browser | Build, localhost bind, PM2 service `media` |
-| Cloudflare | Download binary, tunnel config, DNS routes |
-| Dashboard | Copy to `~/dash`, write production `.env`, PM2 service `dash` |
-| Security | Localhost bind, password checks, service status |
+| Component | How |
+|-----------|-----|
+| Node.js, PM2, PostgreSQL | `pkg install` |
+| cloudflared | `pkg install cloudflared` (or `tur-repo` first) — **not** GitHub download |
+| Media server | Node.js on `127.0.0.1:8080` |
+| Dashboard | `~/dash` on `127.0.0.1:3000` |
+| Tunnel | PM2 + `~/.cloudflared/config.yml` |
 
-## Cloudflare tunnel (during setup)
+## Media folder path
 
-When prompted, run these in a separate Termux session if not done yet:
+**Use:** `~/storage/shared` (recommended)
+
+**Avoid:** `/storage/emulated/0` or typos like `/stoage/...` — often permission denied in Termux.
+
+Run `termux-setup-storage` and tap **Allow** before choosing a path.
+
+## Cloudflare tunnel
+
+Setup opens the login URL in your phone browser when possible. If not:
 
 ```bash
-~/cloudflared tunnel login
-~/cloudflared tunnel create phone-tunnel
+cloudflared tunnel login
+cloudflared tunnel create phone-tunnel
 ```
 
-Then enter the tunnel UUID when `setup.sh` asks for it.
+Tunnel config must route both hostnames:
 
-## After setup
+```yaml
+ingress:
+  - hostname: dash.yourdomain.com
+    service: http://127.0.0.1:3000
+  - hostname: media.yourdomain.com
+    service: http://127.0.0.1:8080
+  - service: http_status:404
+```
 
-1. Enable Cloudflare Access on `dash.*` and `media.*` — [CLOUDFLARE.md](CLOUDFLARE.md)
-2. Run verification:
+Start tunnel:
 
 ```bash
+pm2 start $(which cloudflared) --name tunnel --interpreter none -- \
+  tunnel --config ~/.cloudflared/config.yml run phone-tunnel
+pm2 save
+```
+
+## Verify
+
+```bash
+pm2 list          # dash, media, tunnel = online
 bash ~/phone-server/scripts/verify.sh
+curl http://127.0.0.1:3000/api/health
 ```
 
-## Phone directory layout
-
-```
-~/dash/                    # Admin dashboard
-~/projects/frontend/       # Frontend apps
-~/projects/backend/        # Backend apps
-~/filebrowser/             # File Browser config
-~/postgres-data/           # PostgreSQL data
-~/.cloudflared/            # Tunnel config
-~/cloudflared              # cloudflared binary
-~/uploads/                 # Project upload staging
-~/backups/                 # Backups
-```
-
-## Recovery after reboot
+## After reboot
 
 ```bash
 pg_ctl -D ~/postgres-data start
 pm2 resurrect
-pm2 list
 ```
-
-## Troubleshooting
-
-| Issue | Fix |
-|-------|-----|
-| Termux killed by Android | Disable battery optimization |
-| Tunnel not connecting | `sv restart cloudflared`; check `~/cloudflared.log` |
-| PM2 empty after reboot | `pm2 save` then `pm2 startup` (follow printed instructions) |
-| PostgreSQL won't start | `pg_ctl -D ~/postgres-data status` |
-| Script says "must run on Termux" | Do not run on Mac — use phone only |

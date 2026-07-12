@@ -24,6 +24,11 @@ check() {
   fi
 }
 
+pm2_online() {
+  local name="$1"
+  pm2 list 2>/dev/null | grep -w "$name" | grep -q online
+}
+
 echo "==> Phone Server Verification"
 echo "Base URL: $BASE"
 echo ""
@@ -72,27 +77,17 @@ fi
 
 if command -v pm2 >/dev/null 2>&1; then
   check "PM2 available" pm2 -v
-  check "Dashboard PM2 process" pm2 describe dash
-  check "Media PM2 process" pm2 describe media
+  check "Dashboard PM2 process" pm2_online dash
+  check "Media PM2 process" pm2_online media
+  check "Cloudflare tunnel (PM2)" pm2_online tunnel
 fi
 
 if command -v psql >/dev/null 2>&1; then
   check "PostgreSQL reachable" psql -l
 fi
 
-if [ -x "$HOME/cloudflared" ]; then
-  check "cloudflared binary" "$HOME/cloudflared" -v
-fi
-
-if pm2 describe tunnel 2>/dev/null | grep -qE 'status.*online'; then
-  echo "✓ Cloudflare tunnel running (PM2)"
-  PASS=$((PASS + 1))
-elif pgrep -f cloudflared >/dev/null 2>&1; then
-  echo "✓ Cloudflare tunnel running"
-  PASS=$((PASS + 1))
-else
-  echo "✗ Cloudflare tunnel not running"
-  FAIL=$((FAIL + 1))
+if command -v cloudflared >/dev/null 2>&1; then
+  check "cloudflared available" cloudflared --version
 fi
 
 if [ -f "$HOME/media-server/env.sh" ]; then
