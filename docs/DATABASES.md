@@ -52,6 +52,10 @@ bash ~/pocket-server/scripts/setup-ngrok.sh
 pm2 restart dash --update-env
 ```
 
+**Termux note:** Generic Linux ngrok binaries fail with `unexpected e_type: 2`. The setup script uses `pkg install ngrok` or a `termux-chroot` wrapper automatically.
+
+If ngrok shows "Reconnecting", turn on your phone's **mobile hotspot** and run `pm2 restart ngrok-db`.
+
 Check:
 
 ```bash
@@ -111,4 +115,6 @@ Dashboard uses these instead of querying the live API.
 | Remote URL empty | ngrok not running — run setup-ngrok.sh |
 | Local works, remote fails | Confirm ngrok tunnel: `curl http://127.0.0.1:4040/api/tunnels` |
 | URL changed after restart | Expected on free tier — refresh dashboard or use paid reserved TCP |
+| `unexpected e_type: 2` | Re-run `setup-ngrok.sh` — uses termux-chroot, not direct Linux binary |
+| ngrok stuck Reconnecting | Turn on mobile hotspot, then `pm2 restart ngrok-db` |
 | `listen_addresses` localhost | Re-run configure-postgres-tailscale.sh |
