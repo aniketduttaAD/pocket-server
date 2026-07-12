@@ -190,6 +190,7 @@
           hideControls: true,
           resetOnEnd: false,
           keyboard: { focused: true, global: false },
+          iconUrl: '/__assets/vendor/plyr.svg',
         });
 
         player.on('ready', function () {

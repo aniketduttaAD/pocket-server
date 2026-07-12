@@ -67,14 +67,16 @@ body.page-viewer {
   pointer-events: none;
 }
 
-/* Video dims chrome instead of hiding it fully */
+/* Video fully hides chrome until interaction */
 .viewer-immersive.chrome-dimmed .viewer-chrome {
-  opacity: 0.12;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .viewer-immersive.chrome-dimmed .viewer-chrome:hover,
 .viewer-immersive.chrome-dimmed .viewer-chrome:focus-within {
   opacity: 1;
+  pointer-events: auto;
 }
 
 /* ── Header title ── */
@@ -655,6 +657,112 @@ body.page-viewer {
   }
 }
 
+/* ── Info panel ── */
+
+.viewer-info-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.viewer-info-overlay.open {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.viewer-info-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.viewer-info-sheet {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  background: var(--surface);
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 1.25rem 1rem calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  transform: translateY(100%);
+  transition: transform 0.28s cubic-bezier(0.32, 0, 0.2, 1);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.viewer-info-overlay.open .viewer-info-sheet {
+  transform: translateY(0);
+}
+
+.viewer-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.viewer-info-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.viewer-info-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--page);
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.viewer-info-close:hover { background: var(--surface-muted); }
+
+.viewer-info-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.viewer-info-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  min-height: 0;
+}
+
+.viewer-info-row:last-child { border-bottom: none; }
+
+.viewer-info-key {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  min-width: 72px;
+  flex-shrink: 0;
+}
+
+.viewer-info-val {
+  font-size: 0.8125rem;
+  color: var(--text);
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+
 /* ── Editor ── */
 
 .viewer-editor {
@@ -699,5 +807,4 @@ body.page-viewer {
 
 .plyr__control--overlaid:hover {
   background: rgba(62, 207, 142, 1);
-  transform: scale(1.06);
 }

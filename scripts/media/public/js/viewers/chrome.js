@@ -34,7 +34,7 @@
 
   root.addEventListener('click', function (e) {
     if (e.target.closest(
-      '.viewer-chrome, .viewer-controls, .viewer-edge, .viewer-ctl, .viewer-chrome-btn, .viewer-audio-fix-btn, .viewer-media-status, video, audio, .plyr, #pdf-canvas-wrap, .cm-editor'
+      '.viewer-chrome, .viewer-controls, .viewer-edge, .viewer-ctl, .viewer-chrome-btn, .viewer-audio-fix-btn, .viewer-media-status, .viewer-info-overlay, video, audio, .plyr, #pdf-canvas-wrap, .cm-editor'
     )) return;
     if (autoDim || autoHide) toggleChrome();
   });
@@ -54,6 +54,12 @@
       window.location.href = next.getAttribute('href');
     }
     if (e.key === 'Escape') {
+      var infoOv = document.getElementById('viewer-info-overlay');
+      if (infoOv && infoOv.classList.contains('open')) {
+        infoOv.classList.remove('open');
+        infoOv.setAttribute('aria-hidden', 'true');
+        return;
+      }
       var back = root.querySelector('.viewer-chrome-btn[aria-label="Back"]');
       if (back) window.location.href = back.getAttribute('href');
     }
@@ -79,4 +85,31 @@
   });
 
   if (autoDim || autoHide) showChrome();
+
+  // Info panel
+  var infoOverlay = document.getElementById('viewer-info-overlay');
+  var infoBtn = document.getElementById('viewer-info-btn');
+  var infoClose = document.getElementById('viewer-info-close');
+  var infoBackdrop = document.getElementById('viewer-info-backdrop');
+
+  function openInfo() {
+    if (!infoOverlay) return;
+    infoOverlay.classList.add('open');
+    infoOverlay.setAttribute('aria-hidden', 'false');
+    showChrome();
+  }
+
+  function closeInfo() {
+    if (!infoOverlay) return;
+    infoOverlay.classList.remove('open');
+    infoOverlay.setAttribute('aria-hidden', 'true');
+  }
+
+  infoBtn?.addEventListener('click', function (e) {
+    e.stopPropagation();
+    openInfo();
+  });
+
+  infoClose?.addEventListener('click', closeInfo);
+  infoBackdrop?.addEventListener('click', closeInfo);
 })();

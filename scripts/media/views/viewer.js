@@ -111,6 +111,29 @@ function viewerPage(abs, webPath, kind, siblings) {
     ? `<span class="viewer-chrome-meta">${esc(ext.slice(1).toUpperCase() || kind.toUpperCase())} · ${formatSize(fileSize)}</span>`
     : '';
 
+  let fileMtime = '';
+  try {
+    const st = fs.statSync(abs);
+    fileMtime = new Date(st.mtimeMs).toLocaleString();
+  } catch { /* ignore */ }
+
+  const infoPanel = `<div class="viewer-info-overlay" id="viewer-info-overlay" aria-hidden="true">
+  <div class="viewer-info-backdrop" id="viewer-info-backdrop"></div>
+  <div class="viewer-info-sheet" role="dialog" aria-label="File info">
+    <div class="viewer-info-header">
+      <span class="viewer-info-title">File info</span>
+      <button type="button" class="viewer-info-close" id="viewer-info-close" aria-label="Close">✕</button>
+    </div>
+    <div class="viewer-info-rows">
+      <div class="viewer-info-row"><span class="viewer-info-key">Name</span><span class="viewer-info-val">${esc(name)}</span></div>
+      <div class="viewer-info-row"><span class="viewer-info-key">Type</span><span class="viewer-info-val">${esc(mime)}</span></div>
+      <div class="viewer-info-row"><span class="viewer-info-key">Size</span><span class="viewer-info-val">${formatSize(fileSize)}</span></div>
+      <div class="viewer-info-row"><span class="viewer-info-key">Path</span><span class="viewer-info-val">${esc(webPath)}</span></div>
+      ${fileMtime ? `<div class="viewer-info-row"><span class="viewer-info-key">Modified</span><span class="viewer-info-val">${esc(fileMtime)}</span></div>` : ''}
+    </div>
+  </div>
+</div>`;
+
   const body = `<div id="viewer-data"
   data-path="${esc(webPath)}"
   data-raw="${esc(rawUrl)}"
@@ -134,12 +157,14 @@ function viewerPage(abs, webPath, kind, siblings) {
     </div>
     <div class="viewer-chrome-actions">
       ${editControls}
+      <button type="button" class="viewer-chrome-btn" id="viewer-info-btn" aria-label="File info">${icon('info')}</button>
       <a class="viewer-chrome-btn" href="${dlUrl}" aria-label="Download">${icon('download')}</a>
     </div>
   </header>
   <div class="viewer-body">${viewerContent}</div>
   ${prevEdge}${nextEdge}
-</div>`;
+</div>
+${infoPanel}`;
 
   return pageShell(name, body, {
     showBack: false,

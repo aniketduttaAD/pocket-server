@@ -299,6 +299,23 @@
   border: 1px solid var(--border);
 }
 
+/* Date group headers inserted by browse.js when date sort is active */
+.date-group-header {
+  grid-column: 1 / -1;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 0.75rem 0.25rem 0.35rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.15rem;
+}
+
+.gallery.list-view .date-group-header {
+  padding: 0.6rem 0.25rem 0.25rem;
+}
+
 .empty-state {
   padding: 3rem 1.5rem;
   text-align: center;

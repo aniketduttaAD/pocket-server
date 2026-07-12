@@ -110,9 +110,12 @@ if (!rawUrl || !canvas) {
 
   try {
     pdfDoc = await pdfjsLib.getDocument(rawUrl).promise;
-    requestAnimationFrame(() => fitWidth());
+    // Pre-fetch page dimensions so fitWidth works on first call
+    const firstPage = await pdfDoc.getPage(1);
+    pageWidth = firstPage.getViewport({ scale: 1 }).width;
+    fitWidth();
   } catch (e) {
-    wrap.innerHTML = `<p class="pdf-error">Could not load PDF: ${e.message}</p>`;
+    if (wrap) wrap.innerHTML = `<p class="pdf-error">Could not load PDF: ${e.message}</p>`;
   }
 
   document.getElementById('pdf-prev')?.addEventListener('click', () => {

@@ -9,7 +9,7 @@
   var lightbox = new PhotoSwipeLightbox({
     dataSource: items,
     pswpModule: function () {
-      return import('https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.esm.min.js');
+      return import('/__assets/vendor/photoswipe.esm.min.js');
     },
     bgOpacity: 0.92,
   });

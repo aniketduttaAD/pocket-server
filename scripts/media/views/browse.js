@@ -107,9 +107,6 @@ function listDir(abs, webPath) {
       <p class="page-stats">${folders.length} folders · ${mediaItems.length} files</p>
     </div>
   </div>
-  <div class="toolbar">
-    <div class="search-wrap">${icon('search')}<input class="search" id="search" type="search" placeholder="Search…" autocomplete="off" aria-label="Search files"></div>
-  </div>
 </section>`;
 
   if (!folders.length && !mediaItems.length) {
@@ -129,7 +126,7 @@ function listDir(abs, webPath) {
         '/__assets/js/browse.js',
       ],
       cdnStyles: [
-        'https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.min.css',
+        '/__assets/vendor/photoswipe.min.css',
       ],
       cdnScripts: [
         'https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe-lightbox.umd.min.js',
@@ -172,7 +169,7 @@ function listDir(abs, webPath) {
       '/__assets/js/browse.js',
     ],
     cdnStyles: [
-      'https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.min.css',
+      '/__assets/vendor/photoswipe.min.css',
     ],
     cdnScripts: [
       'https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe-lightbox.umd.min.js',
@@ -228,6 +225,7 @@ function optionsSheetHtml() {
       <option value="name-desc">Name Z–A</option>
       <option value="size-desc">Largest first</option>
       <option value="date-desc">Newest first</option>
+      <option value="date-asc">Oldest first</option>
     </select>
     <label class="field-label">Layout</label>
     <div class="seg-control full" role="group" aria-label="View mode">
