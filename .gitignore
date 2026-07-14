@@ -15,4 +15,6 @@ memory-engine/.venv/
 memory-engine/__pycache__/
 memory-engine/web/node_modules/
 memory-engine/data/
+memory-engine-data.tar
+memory-engine-data.tar.gz
 *.pyc
