@@ -57,8 +57,9 @@ ensure_tmux() {
   echo "  Re-attach later: tmux attach -t memory-setup"
   echo "  Log file: $LOG_FILE"
   sleep 2
+  # Keep the tmux pane open even if setup fails (so you can read the error)
   exec tmux new-session -A -s memory-setup \
-    "MEMORY_ENGINE_NO_TMUX=1 bash $(printf '%q' "$0") $(printf '%q' "$PHASE"); echo; echo Done. Press Enter.; read"
+    "MEMORY_ENGINE_NO_TMUX=1 bash $(printf '%q' "$0") $(printf '%q' "$PHASE"); ec=\$?; echo; echo Exit=\$ec; echo Log: $LOG_FILE; echo; echo Press Enter to close.; read _ || true; exit \$ec"
 }
 
 acquire_wakelock() {
