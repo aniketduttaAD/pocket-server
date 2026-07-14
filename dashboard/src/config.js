@@ -75,7 +75,7 @@ module.exports = {
   projects: {
     portStart: parseInt(process.env.PROJECT_PORT_START || '3001', 10),
     portEnd: parseInt(process.env.PROJECT_PORT_END || '3999', 10),
-    reservedPorts: (process.env.RESERVED_PORTS || '3000,5432,8080')
+    reservedPorts: (process.env.RESERVED_PORTS || '3000,5432,8080,8765')
       .split(',')
       .map((p) => parseInt(p.trim(), 10))
       .filter((p) => !Number.isNaN(p)),

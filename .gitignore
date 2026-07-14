@@ -9,3 +9,10 @@ dashboard/data/.gitkeep
 .DS_Store
 backups/
 *.tar.gz
+
+# Memory Engine runtime (bundled data/ is large — keep local, not in git)
+memory-engine/.venv/
+memory-engine/__pycache__/
+memory-engine/web/node_modules/
+memory-engine/data/
+*.pyc

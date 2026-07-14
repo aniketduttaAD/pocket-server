@@ -426,6 +426,8 @@ ingress:
     service: http://127.0.0.1:3000
   - hostname: media.${BASE_DOMAIN}
     service: http://127.0.0.1:8080
+  - hostname: memory.${BASE_DOMAIN}
+    service: http://127.0.0.1:8765
   - hostname: db.${BASE_DOMAIN}
     service: tcp://127.0.0.1:5432
   - service: http_status:404
@@ -434,6 +436,7 @@ EOF
     echo "Routing DNS..."
     "$cf_bin" tunnel route dns "$TUNNEL_NAME" "dash.${BASE_DOMAIN}" || true
     "$cf_bin" tunnel route dns "$TUNNEL_NAME" "media.${BASE_DOMAIN}" || true
+    "$cf_bin" tunnel route dns "$TUNNEL_NAME" "memory.${BASE_DOMAIN}" || true
     "$cf_bin" tunnel route dns "$TUNNEL_NAME" "db.${BASE_DOMAIN}" || true
   else
     echo "Existing tunnel config found."
@@ -492,7 +495,7 @@ CLOUDFLARED_CONFIG=${HOME}/.cloudflared/config.yml
 
 PROJECT_PORT_START=3001
 PROJECT_PORT_END=3999
-RESERVED_PORTS=3000,5432,8080
+RESERVED_PORTS=3000,5432,8080,8765
 
 PGDATA=${HOME}/postgres-data
 PGHOST=127.0.0.1
@@ -576,6 +579,7 @@ phase_done() {
   echo ""
   echo "  Dashboard:  https://dash.${BASE_DOMAIN}"
   echo "  Media:      https://media.${BASE_DOMAIN}"
+  echo "  Memory:     https://memory.${BASE_DOMAIN}  (after setup-memory-engine.sh)"
   echo "  Admin user: ${ADMIN_USER}"
   echo ""
   echo "Required manual steps:"

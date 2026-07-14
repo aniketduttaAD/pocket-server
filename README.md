@@ -10,6 +10,7 @@ Turn a spare Android phone into a personal cloud server — admin dashboard, fil
 |-----|---------|
 | `https://dash.aniketdutta.space` | Admin dashboard |
 | `https://media.aniketdutta.space` | Media file browser |
+| `https://memory.aniketdutta.space` | Photo Memory Engine (AI search, faces, chat) |
 | `https://app1.aniketdutta.space` | Your deployed apps |
 
 ## Setup (Android / Termux)
@@ -27,9 +28,28 @@ The wizard installs Node.js, PM2, PostgreSQL, cloudflared, media server, dashboa
 
 ### After setup
 
-1. **Cloudflare Access** — [Zero Trust](https://one.dash.cloudflare.com/) → Access → add `dash.*` and `media.*` (your email only). See [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md).
+1. **Cloudflare Access** — [Zero Trust](https://one.dash.cloudflare.com/) → Access → add `dash.*`, `media.*`, and `memory.*` (your email only). See [docs/CLOUDFLARE.md](docs/CLOUDFLARE.md).
 2. **Verify:** `bash ~/phone-server/scripts/verify.sh` and `pm2 list` (expect `dash`, `media`, `tunnel` online).
 3. **Test** from mobile data: `https://dash.<domain>` and `https://media.<domain>`.
+
+### Memory Engine (photo AI)
+
+The full Memory Engine is bundled under `memory-engine/` (code + indexed `data/`).
+
+```bash
+# Photos must be at ~/storage/dcim with year folders (2011/, 2012/, ...)
+termux-setup-storage
+
+# One-time install (proot Ubuntu + Python ML stack)
+bash ~/phone-server/scripts/setup-memory-engine.sh
+
+# Start the engine
+bash ~/phone-server/scripts/run-memory-engine.sh serve
+```
+
+Open http://127.0.0.1:8765 or https://memory.\<domain\> via the tunnel.
+
+See [memory-engine/README.md](memory-engine/README.md) for details.
 
 ### After phone reboot
 
