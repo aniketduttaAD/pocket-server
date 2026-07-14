@@ -34,22 +34,25 @@ The wizard installs Node.js, PM2, PostgreSQL, cloudflared, media server, dashboa
 
 ### Memory Engine (photo AI)
 
-The full Memory Engine is bundled under `memory-engine/` (code + indexed `data/`).
+Bundled under `memory-engine/` (code + indexed `data/`). Works whether the
+repo folder is named `pocket-server` or `phone-server`.
 
 ```bash
-# Photos must be at ~/storage/dcim with year folders (2011/, 2012/, ...)
+# Photos at ~/storage/dcim with year folders (2011/, 2012/, ...)
 termux-setup-storage
+ls ~/pocket-server/memory-engine/data/memory.db   # must exist
 
-# One-time install (proot Ubuntu + Python ML stack)
-bash ~/phone-server/scripts/setup-memory-engine.sh
+# One-time install
+bash ~/pocket-server/scripts/setup-memory-engine.sh
 
-# Start the engine
-bash ~/phone-server/scripts/run-memory-engine.sh serve
+# Start under PM2 (like dash / media)
+bash ~/pocket-server/scripts/pm2-memory-engine.sh
+pm2 list    # expect: memory
 ```
 
-Open http://127.0.0.1:8765 or https://memory.\<domain\> via the tunnel.
+Open http://127.0.0.1:8765 or https://memory.\<domain\>.
 
-See [memory-engine/README.md](memory-engine/README.md) for details.
+See [memory-engine/README.md](memory-engine/README.md).
 
 ### After phone reboot
 

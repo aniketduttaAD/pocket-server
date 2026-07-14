@@ -1,12 +1,13 @@
-# Android (Termux + proot Ubuntu) — used inside phone-server.
+# Android (Termux + proot Ubuntu) — used inside pocket-server / phone-server.
 # Copied to config.yaml by scripts/setup-memory-engine.sh.
 #
-# Bind mounts (see setup-memory-engine.sh):
-#   ~/storage/dcim              -> /root/photos
-#   ~/phone-server/memory-engine -> /root/phone-server/memory-engine
+# Bind mounts:
+#   ~/storage/dcim     -> /root/photos
+#   <repo>             -> /root/app
+#   (engine lives at)  /root/app/memory-engine
 
 photos_root: "/root/photos"
-data_dir: "/root/phone-server/memory-engine/data"
+data_dir: "/root/app/memory-engine/data"
 
 host: "127.0.0.1"
 port: 8765

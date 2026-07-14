@@ -1,27 +1,28 @@
 #!/usr/bin/env bash
 #
-# Memory Engine setup for phone-server (Termux + proot Ubuntu).
+# Memory Engine setup (Termux + proot Ubuntu).
+# Works for any clone name: ~/pocket-server, ~/phone-server, etc.
 #
 # Prerequisites:
-#   git clone ... ~/phone-server
 #   Photos at ~/storage/dcim  (year folders: 2011/, 2012/, ...)
-#   data/ is bundled under ~/phone-server/memory-engine/data
+#   Indexed data at <repo>/memory-engine/data/memory.db
 #
 # Run from Termux:
-#   bash ~/phone-server/scripts/setup-memory-engine.sh
+#   bash ~/pocket-server/scripts/setup-memory-engine.sh
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENGINE_SRC="$REPO_ROOT/memory-engine"
+ENGINE_DIR="$REPO_ROOT/memory-engine"
 DISTRO="ubuntu"
 
-PHOTOS_TERMUX="$HOME/storage/dcim"
-ENGINE_TERMUX="$HOME/phone-server/memory-engine"
+PHOTOS_TERMUX="${PHOTOS_TERMUX:-$HOME/storage/dcim}"
 
+# Stable guest paths (independent of folder name on the phone)
 PHOTOS_GUEST="/root/photos"
-ENGINE_GUEST="/root/phone-server/memory-engine"
+APP_GUEST="/root/app"
+ENGINE_GUEST="$APP_GUEST/memory-engine"
 
 log()  { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -30,7 +31,7 @@ die()  { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 # Phase 2: inside Ubuntu guest
 # ---------------------------------------------------------------------------
 if [ "${1:-}" = "--inside" ]; then
-  cd "$ENGINE_GUEST" || die "Engine not found at $ENGINE_GUEST"
+  cd "$ENGINE_GUEST" || die "Engine not found at $ENGINE_GUEST (bind mount failed)"
 
   log "Installing system packages (apt)"
   export DEBIAN_FRONTEND=noninteractive
@@ -58,16 +59,21 @@ if [ "${1:-}" = "--inside" ]; then
   log "Verifying engine"
   python -m memory_engine status || true
 
-  cat <<EOF
+  cat <<'EOF'
 
 ============================================================
-Memory Engine ready inside phone-server.
+Memory Engine ready.
 
-Start (from Termux):
-  bash ~/phone-server/scripts/run-memory-engine.sh serve
+From Termux (outside proot), register with PM2:
+  bash ~/pocket-server/scripts/pm2-memory-engine.sh
+
+Then manage like other services:
+  pm2 list
+  pm2 logs memory
+  pm2 restart memory
 
 Open http://127.0.0.1:8765
-Public URL (if tunnel configured): https://memory.<your-domain>
+Public: https://memory.<your-domain>
 ============================================================
 EOF
   exit 0
@@ -77,30 +83,32 @@ fi
 # Phase 1: Termux
 # ---------------------------------------------------------------------------
 [ -d "/data/data/com.termux" ] || die "Run this inside Termux on Android."
-[ -d "$ENGINE_SRC" ] || die "Missing $ENGINE_SRC — clone the full phone-server repo."
-[ -f "$ENGINE_SRC/requirements.txt" ] || die "Incomplete memory-engine bundle."
+[ -d "$ENGINE_DIR" ] || die "Missing $ENGINE_DIR"
+[ -f "$ENGINE_DIR/requirements.txt" ] || die "Incomplete memory-engine bundle at $ENGINE_DIR"
 
-if [ ! -f "$ENGINE_SRC/data/memory.db" ]; then
-  printf '\033[1;33mWARNING: no data/memory.db — copy indexed data/ before setup.\033[0m\n'
+if [ ! -f "$ENGINE_DIR/data/memory.db" ]; then
+  die "Missing $ENGINE_DIR/data/memory.db
+Copy the Mac's memory-engine/data/ folder here first (DB + models + vectors).
+Example from Mac:
+  rsync -avz --progress \".../phone-server/memory-engine/data/\" \\
+    phone:~/pocket-server/memory-engine/data/"
 fi
+
+log "Repo root: $REPO_ROOT"
+log "Engine:    $ENGINE_DIR"
+log "Photos:    $PHOTOS_TERMUX"
 
 log "Storage access (tap Allow if prompted)"
 termux-setup-storage || true
-[ -d "$PHOTOS_TERMUX" ] || printf '\033[1;33mWARNING: %s not found — put photos there first.\033[0m\n' "$PHOTOS_TERMUX"
-
-log "Syncing memory-engine to ~/phone-server/memory-engine"
-mkdir -p "$HOME/phone-server"
-rsync -a --delete \
-  --exclude '.venv' --exclude '__pycache__' --exclude 'node_modules' \
-  "$ENGINE_SRC/" "$ENGINE_TERMUX/"
+[ -d "$PHOTOS_TERMUX" ] || printf '\033[1;33mWARNING: %s not found — put year folders there first.\033[0m\n' "$PHOTOS_TERMUX"
 
 log "Installing proot-distro + Ubuntu"
 pkg update -y
 pkg install -y proot-distro rsync
 proot-distro install "$DISTRO" 2>/dev/null || echo "Ubuntu guest already installed."
 
-log "Provisioning Ubuntu guest"
+log "Provisioning Ubuntu guest (bind $REPO_ROOT -> $APP_GUEST)"
 proot-distro login "$DISTRO" \
   --bind "$PHOTOS_TERMUX:$PHOTOS_GUEST" \
-  --bind "$HOME/phone-server:/root/phone-server" \
-  -- bash "/root/phone-server/scripts/setup-memory-engine.sh" --inside
+  --bind "$REPO_ROOT:$APP_GUEST" \
+  -- bash "$APP_GUEST/scripts/setup-memory-engine.sh" --inside

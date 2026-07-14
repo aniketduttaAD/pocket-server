@@ -1,33 +1,44 @@
-# Memory Engine (phone-server bundle)
+# Memory Engine (bundled in pocket-server / phone-server)
 
 Personal photo intelligence — search, timeline, faces, trips, AI chat.
 
-Bundled inside **phone-server** for Android deployment. The indexed database and
-ML models live in `data/` (copied from the Mac; not committed to git).
-
 ## On the phone (Termux)
 
+Repo may be named `pocket-server` or `phone-server` — scripts auto-detect.
+
 ```bash
-# 1. Clone phone-server (includes this folder + data/)
-git clone <repo> ~/phone-server
+# 1. Photos at ~/storage/dcim with year folders (2011/, 2012/, ...)
+termux-setup-storage
 
-# 2. Put photos at ~/storage/dcim  (year folders: 2011/, 2012/, ...)
+# 2. Make sure data/ is present (indexed DB + models from Mac)
+ls ~/pocket-server/memory-engine/data/memory.db
 
-# 3. One-time setup (proot Ubuntu + Python ML stack)
-bash ~/phone-server/scripts/setup-memory-engine.sh
+# 3. One-time install (proot Ubuntu + Python ML stack)
+bash ~/pocket-server/scripts/setup-memory-engine.sh
 
-# 4. Start
-bash ~/phone-server/scripts/run-memory-engine.sh serve
+# 4. Register with PM2 (same as dash / media)
+bash ~/pocket-server/scripts/pm2-memory-engine.sh
 ```
 
-Open http://127.0.0.1:8765 — or https://memory.yourdomain.com via Cloudflare tunnel.
-
-## CLI (via run-memory-engine.sh)
+Then:
 
 ```bash
-bash ~/phone-server/scripts/run-memory-engine.sh status
-bash ~/phone-server/scripts/run-memory-engine.sh ingest
-bash ~/phone-server/scripts/run-memory-engine.sh search "Maa 2023"
+pm2 list              # expect: memory (online)
+pm2 logs memory
+pm2 restart memory
+```
+
+Open http://127.0.0.1:8765 — or https://memory.yourdomain.com via Cloudflare.
+
+## If memory.db is missing
+
+`data/` is large (~2.5 GB) and usually not in git. Copy from Mac:
+
+```bash
+# on Mac
+rsync -avz --progress \
+  "./phone-server/memory-engine/data/" \
+  phone:~/pocket-server/memory-engine/data/
 ```
 
 ## Layout
@@ -36,8 +47,8 @@ bash ~/phone-server/scripts/run-memory-engine.sh search "Maa 2023"
 memory-engine/
 ├── memory_engine/   Python package
 ├── web/             React UI (dist/ pre-built)
-├── data/            DB + FAISS + models (local only)
-├── scripts/         relocate_paths.py, run.sh
+├── data/            DB + FAISS + models (required)
+├── scripts/
 ├── config.phone.yaml
 └── requirements.txt
 ```

@@ -80,6 +80,11 @@ if command -v pm2 >/dev/null 2>&1; then
   check "Dashboard PM2 process" pm2_online dash
   check "Media PM2 process" pm2_online media
   check "Cloudflare tunnel (PM2)" pm2_online tunnel
+  if pm2 list 2>/dev/null | grep -qw memory; then
+    check "Memory Engine PM2 process" pm2_online memory
+  else
+    echo "○ Memory Engine not registered (optional: bash \$REPO/scripts/pm2-memory-engine.sh)"
+  fi
 fi
 
 if command -v psql >/dev/null 2>&1; then
@@ -112,5 +117,6 @@ echo ""
 echo "Manual checks (required before going live):"
 echo "  [ ] https://dash.<domain> loads via Cloudflare Access"
 echo "  [ ] https://media.<domain> loads via Cloudflare Access"
+echo "  [ ] https://memory.<domain> loads (if Memory Engine installed)"
 echo "  [ ] http://<phone-lan-ip>:3000 is NOT reachable from another device"
 echo "  [ ] Upload a test project and create a test database"
