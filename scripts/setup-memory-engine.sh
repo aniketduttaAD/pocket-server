@@ -177,14 +177,27 @@ phase_termux() {
   ok "termux phase done"
 }
 
+ubuntu_installed() {
+  # proot-distro list format varies; probing login is reliable
+  proot-distro login "$DISTRO" -- bash -c 'exit 0' >/dev/null 2>&1
+}
+
 phase_ubuntu() {
   log "Installing Ubuntu guest (one-time, can take several minutes)"
-  if proot-distro list 2>/dev/null | grep -qw "$DISTRO"; then
+  if ubuntu_installed; then
     ok "Ubuntu already installed"
-  else
-    proot-distro install "$DISTRO"
+    return 0
   fi
-  ok "ubuntu phase done"
+  if proot-distro install "$DISTRO"; then
+    ok "ubuntu phase done"
+    return 0
+  fi
+  # Race / already-exists message still means success if login works
+  if ubuntu_installed; then
+    ok "Ubuntu already installed"
+    return 0
+  fi
+  die "Ubuntu install failed"
 }
 
 phase_apt() {
@@ -232,33 +245,24 @@ phase_resume() {
   if ! command -v proot-distro >/dev/null 2>&1; then
     phase_termux
   fi
-  if ! proot-distro list 2>/dev/null | grep -qw "$DISTRO"; then
-    phase_ubuntu
-  else
-    ok "Ubuntu present — skip"
-  fi
+  phase_ubuntu
 
-  # apt done? python3.venv exists in guest
+  # apt done? python3 venv module available in guest
   if ! guest_login bash -lc 'python3 -m venv -h >/dev/null 2>&1'; then
     phase_apt
   else
     ok "apt/python3-venv present — skip"
   fi
 
-  # pip done? uvicorn importable in engine venv
+  # pip done? core imports work in engine venv
   if ! guest_login bash -lc "cd $ENGINE_GUEST && test -f .venv/bin/activate && . .venv/bin/activate && python -c 'import uvicorn, fastapi, yaml'"; then
     phase_pip
   else
     ok "core pip packages present — skip"
   fi
 
-  # finish done? config.yaml + relocated paths
-  if [ ! -f "$ENGINE_DIR/config.yaml" ]; then
-    phase_finish
-  else
-    log "Refreshing finish (config + path relocate)"
-    phase_finish
-  fi
+  log "Refreshing finish (config + path relocate)"
+  phase_finish
 }
 
 # ---------------------------------------------------------------------------
