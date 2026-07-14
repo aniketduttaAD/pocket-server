@@ -7,9 +7,8 @@
 #
 #   bash ~/pocket-server/scripts/setup-memory-engine.sh
 #
-# Or step-by-step:
-#   bash ~/pocket-server/scripts/setup-memory-engine.sh termux
-#   bash ~/pocket-server/scripts/setup-memory-engine.sh ubuntu
+# Or step-by-step / resume after a crash:
+#   bash ~/pocket-server/scripts/setup-memory-engine.sh resume
 #   bash ~/pocket-server/scripts/setup-memory-engine.sh apt
 #   bash ~/pocket-server/scripts/setup-memory-engine.sh pip
 #   bash ~/pocket-server/scripts/setup-memory-engine.sh finish
@@ -227,6 +226,41 @@ run_all() {
   phase_finish
 }
 
+# Continue from first incomplete phase (safe to re-run)
+phase_resume() {
+  log "Auto-resume: detecting progress"
+  if ! command -v proot-distro >/dev/null 2>&1; then
+    phase_termux
+  fi
+  if ! proot-distro list 2>/dev/null | grep -qw "$DISTRO"; then
+    phase_ubuntu
+  else
+    ok "Ubuntu present — skip"
+  fi
+
+  # apt done? python3.venv exists in guest
+  if ! guest_login bash -lc 'python3 -m venv -h >/dev/null 2>&1'; then
+    phase_apt
+  else
+    ok "apt/python3-venv present — skip"
+  fi
+
+  # pip done? uvicorn importable in engine venv
+  if ! guest_login bash -lc "cd $ENGINE_GUEST && test -f .venv/bin/activate && . .venv/bin/activate && python -c 'import uvicorn, fastapi, yaml'"; then
+    phase_pip
+  else
+    ok "core pip packages present — skip"
+  fi
+
+  # finish done? config.yaml + relocated paths
+  if [ ! -f "$ENGINE_DIR/config.yaml" ]; then
+    phase_finish
+  else
+    log "Refreshing finish (config + path relocate)"
+    phase_finish
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -241,12 +275,13 @@ case "$PHASE" in
     log "Phase=$PHASE  log=$LOG_FILE"
     case "$PHASE" in
       all)     run_all ;;
+      resume)  phase_resume ;;
       termux)  phase_termux ;;
       ubuntu)  phase_ubuntu ;;
       apt)     phase_apt ;;
       pip)     phase_pip ;;
       finish)  phase_finish ;;
-      *) die "Unknown phase: $PHASE (use all|termux|ubuntu|apt|pip|finish)" ;;
+      *) die "Unknown phase: $PHASE (use all|resume|termux|ubuntu|apt|pip|finish)" ;;
     esac
     ;;
 esac
