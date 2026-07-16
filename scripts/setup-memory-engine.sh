@@ -17,7 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENGINE_DIR="$REPO_ROOT/memory-engine"
+ENGINE_DIR="${MEMORY_ENGINE_DIR:-$(dirname "$REPO_ROOT")/memory-engine}"
 DISTRO="ubuntu"
 LOG_DIR="$HOME/logs"
 LOG_FILE="$LOG_DIR/memory-engine-setup.log"
@@ -25,7 +25,7 @@ LOG_FILE="$LOG_DIR/memory-engine-setup.log"
 PHOTOS_TERMUX="${PHOTOS_TERMUX:-$HOME/storage/dcim}"
 PHOTOS_GUEST="/root/photos"
 APP_GUEST="/root/app"
-ENGINE_GUEST="$APP_GUEST/memory-engine"
+ENGINE_GUEST="/root/memory-engine"
 
 PHASE="${1:-all}"
 
@@ -72,6 +72,7 @@ guest_login() {
   proot-distro login "$DISTRO" \
     --bind "$PHOTOS_TERMUX:$PHOTOS_GUEST" \
     --bind "$REPO_ROOT:$APP_GUEST" \
+    --bind "$ENGINE_DIR:$ENGINE_GUEST" \
     -- "$@"
 }
 
@@ -152,11 +153,12 @@ fi
 # ---------------------------------------------------------------------------
 require_termux() {
   [ -d "/data/data/com.termux" ] || die "Run this inside Termux on Android."
-  [ -d "$ENGINE_DIR" ] || die "Missing $ENGINE_DIR"
+  [ -d "$ENGINE_DIR" ] || die "Missing $ENGINE_DIR — clone the memory-engine repo to $(dirname "$REPO_ROOT")/memory-engine"
   [ -f "$ENGINE_DIR/requirements.txt" ] || die "Incomplete memory-engine at $ENGINE_DIR"
   if [ ! -f "$ENGINE_DIR/data/memory.db" ]; then
     die "Missing $ENGINE_DIR/data/memory.db — extract the data tar first:
-  cd ~/pocket-server/memory-engine
+  mkdir -p $ENGINE_DIR
+  cd $ENGINE_DIR
   tar -xf ~/storage/shared/Download/memory-engine-data.tar
   ls -lh data/memory.db"
   fi

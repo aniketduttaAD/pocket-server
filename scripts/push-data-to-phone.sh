@@ -8,8 +8,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DATA_SRC="$REPO_ROOT/memory-engine/data"
-TAR="$REPO_ROOT/memory-engine-data.tar"
+ENGINE_ROOT="${MEMORY_ENGINE_DIR:-$(dirname "$REPO_ROOT")}"
+DATA_SRC="$ENGINE_ROOT/data"
+TAR="$(dirname "$REPO_ROOT")/memory-engine-data.tar"
 ADB="${ADB:-adb}"
 command -v adb >/dev/null 2>&1 || ADB="/Users/aniketdutta/Library/Android/sdk/platform-tools/adb"
 
@@ -33,8 +34,8 @@ if [ "${1:-}" = "--adb" ]; then
 
 On the phone (Termux):
 
-  mkdir -p ~/pocket-server/memory-engine
-  cd ~/pocket-server/memory-engine
+  mkdir -p ~/memory-engine
+  cd ~/memory-engine
   tar -xf ~/storage/shared/Download/memory-engine-data.tar
   # that creates ./data/ — verify:
   ls -lh data/memory.db data/vectors.faiss
@@ -49,8 +50,9 @@ fi
 TARGET="${1:-}"
 [ -n "$TARGET" ] || die "Usage: $0 --adb   OR   $0 user@PHONE_IP"
 
-REMOTE_DIR="~/pocket-server/memory-engine/data"
+REMOTE_DIR="~/memory-engine/data"
 echo "Syncing $DATA_SRC  ->  $TARGET:$REMOTE_DIR"
 ssh "$TARGET" "mkdir -p $REMOTE_DIR"
 rsync -avz --progress --partial "$DATA_SRC/" "$TARGET:$REMOTE_DIR/"
 echo "Done. On phone: bash ~/pocket-server/scripts/setup-memory-engine.sh"
+echo "  (ensure memory-engine is at ~/memory-engine on the phone)"

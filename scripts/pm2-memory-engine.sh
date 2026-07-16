@@ -9,7 +9,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENGINE_DIR="$REPO_ROOT/memory-engine"
+ENGINE_DIR="${MEMORY_ENGINE_DIR:-$(dirname "$REPO_ROOT")/memory-engine}"
 RUNNER="$SCRIPT_DIR/run-memory-engine.sh"
 NAME="memory"
 
