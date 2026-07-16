@@ -6,6 +6,7 @@
   max-height: 85dvh;
   transform: translateY(100%);
   border-radius: var(--radius) var(--radius) 0 0;
+  padding-top: 0;
 }
 
 .upload-sheet.open { transform: translateY(0); }

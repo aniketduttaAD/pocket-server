@@ -37,7 +37,7 @@ function serveFile(req, res, abs, download) {
       'Accept-Ranges': 'bytes',
       'ETag': etag,
       'Last-Modified': lastMod,
-      'Cache-Control': type.startsWith('image/') ? 'public, max-age=300, stale-while-revalidate=60' : 'no-store',
+      'Cache-Control': type.startsWith('image/') ? 'public, max-age=3600, stale-while-revalidate=300' : 'no-store',
     };
 
     if (download) {
@@ -88,7 +88,7 @@ function serveAsset(req, res, assetPath) {
     res.writeHead(200, {
       'Content-Type': type,
       'Content-Length': st.size,
-      'Cache-Control': 'public, max-age=86400',
+      'Cache-Control': 'public, max-age=604800, immutable',
     });
     fs.createReadStream(abs).pipe(res);
   });

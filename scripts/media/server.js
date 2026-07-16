@@ -124,8 +124,15 @@ const server = http.createServer(async (req, res) => {
 
     if (st.isDirectory()) {
       const webPath = u.pathname.endsWith('/') ? u.pathname : `${u.pathname}/`;
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(listDir(abs, webPath));
+      listDir(abs, webPath).then((html) => {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+      }).catch((e) => {
+        console.error('listDir error:', e);
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Error reading directory');
+      });
+      return;
     }
 
     if (transcode) {

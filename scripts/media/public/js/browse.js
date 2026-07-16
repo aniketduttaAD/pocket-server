@@ -1,59 +1,86 @@
 (function () {
   var M = window.MediaLib || window.Media;
   if (!M || typeof M.$ !== 'function') return;
+
   var selected = new Set();
-  var filterKind = M.$('#filter-kind');
-  var sortBy = M.$('#sort-by');
   var bulkBar = M.$('#bulk-bar');
   var bulkCount = M.$('#bulk-count');
+  var searchInput = M.$('#filter-search');
 
+  // ── State ──────────────────────────────────────────────────────────────────
+  var state = {
+    kind: 'all',
+    sort: 'date-desc', // default: newest first
+    view: 'grid',
+    query: '',
+  };
+
+  try {
+    var sv = localStorage.getItem('mediaView');
+    var ss = localStorage.getItem('mediaSort');
+    var sk = localStorage.getItem('mediaKind');
+    if (sv) state.view = sv;
+    if (ss) state.sort = ss;
+    if (sk) state.kind = sk;
+  } catch (_) {}
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
   function openOptions() { if (M.openOptions) M.openOptions(); }
   function closeOptions() { if (M.closeOptions) M.closeOptions(); }
 
   function dateLabel(mtime) {
-    if (!mtime) return 'Unknown date';
+    if (!mtime) return 'Unknown';
     var d = new Date(+mtime);
     var now = new Date();
-    var diff = now - d;
-    if (diff < 86400000 && d.getDate() === now.getDate()) return 'Today';
-    if (diff < 172800000) return 'Yesterday';
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var itemDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var diff = today - itemDay;
+    if (diff === 0) return 'Today';
+    if (diff === 86400000) return 'Yesterday';
+    if (diff < 7 * 86400000) return d.toLocaleDateString(undefined, { weekday: 'long' });
+    if (d.getFullYear() === now.getFullYear()) {
+      return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+    }
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long' });
   }
 
+  function matchesSearch(el) {
+    if (!state.query) return true;
+    return (el.dataset.name || '').toLowerCase().includes(state.query.toLowerCase());
+  }
+
+  // ── Filter + Sort ──────────────────────────────────────────────────────────
   function applyFilters() {
-    var kind = filterKind?.value || 'all';
     M.$$('.media-item').forEach(function (el) {
-      var k = el.dataset.kind || '';
-      el.classList.toggle('hidden', kind !== 'all' && k !== kind);
+      var kindOk = state.kind === 'all' || (el.dataset.kind || '') === state.kind;
+      el.classList.toggle('hidden', !kindOk || !matchesSearch(el));
     });
     sortAndGroup();
+    updateActiveCount();
   }
 
   function sortAndGroup() {
-    var mode = sortBy?.value || 'name-asc';
+    var mode = state.sort;
     var isDateSort = mode === 'date-desc' || mode === 'date-asc';
 
     M.$$('.gallery').forEach(function (gallery) {
-      // Remove existing date headers
       M.$$('.date-group-header', gallery).forEach(function (h) { h.remove(); });
 
-      var items = M.$$('.media-item', gallery).filter(function (el) {
-        return !el.classList.contains('hidden');
-      });
+      var items = M.$$('.media-item:not(.hidden)', gallery);
 
       items.sort(function (a, b) {
-        if (mode === 'name-asc') return (a.dataset.name || '').localeCompare(b.dataset.name || '');
-        if (mode === 'name-desc') return (b.dataset.name || '').localeCompare(a.dataset.name || '');
-        if (mode === 'size-desc') return (+b.dataset.size || 0) - (+a.dataset.size || 0);
-        if (mode === 'date-desc') return (+b.dataset.mtime || 0) - (+a.dataset.mtime || 0);
-        if (mode === 'date-asc') return (+a.dataset.mtime || 0) - (+b.dataset.mtime || 0);
-        return 0;
+        switch (mode) {
+          case 'name-asc':  return (a.dataset.name || '').localeCompare(b.dataset.name || '');
+          case 'name-desc': return (b.dataset.name || '').localeCompare(a.dataset.name || '');
+          case 'size-desc': return (+b.dataset.size || 0) - (+a.dataset.size || 0);
+          case 'date-asc':  return (+a.dataset.mtime || 0) - (+b.dataset.mtime || 0);
+          default:          return (+b.dataset.mtime || 0) - (+a.dataset.mtime || 0); // date-desc
+        }
       });
 
       items.forEach(function (el) { gallery.appendChild(el); });
 
-      // Insert date group headers after sorting
-      if (isDateSort) {
+      if (isDateSort && items.length) {
         var lastLabel = null;
         items.forEach(function (el) {
           var label = dateLabel(el.dataset.mtime);
@@ -70,25 +97,53 @@
   }
 
   function setView(mode) {
+    state.view = mode;
     M.$$('.gallery').forEach(function (g) {
       g.classList.toggle('list-view', mode === 'list');
     });
     M.$$('[data-view]').forEach(function (b) {
-      var active = b.dataset.view === mode;
-      b.classList.toggle('active', active);
-      b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      var isActive = b.dataset.view === mode;
+      b.classList.toggle('active', isActive);
+      b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
-    try { localStorage.setItem('mediaView', mode); } catch (e) {}
+    try { localStorage.setItem('mediaView', mode); } catch (_) {}
   }
 
+  // ── Sync filter-sheet UI to state ──────────────────────────────────────────
+  function syncFilterUI() {
+    M.$$('[data-kind]').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.kind === state.kind);
+    });
+    M.$$('[data-sort]').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.sort === state.sort);
+    });
+    M.$$('[data-view]').forEach(function (btn) {
+      var isActive = btn.dataset.view === state.view;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+    if (searchInput && state.query) searchInput.value = state.query;
+  }
+
+  // Show a dot on the filter button when non-default filters are active
+  function updateActiveCount() {
+    var hasFilter = state.kind !== 'all' || state.sort !== 'date-desc' || state.query;
+    var toggleBtn = M.$('#options-toggle');
+    if (toggleBtn) toggleBtn.classList.toggle('filter-active', !!hasFilter);
+    var bottomBtn = M.$('#bottom-options');
+    if (bottomBtn) bottomBtn.classList.toggle('filter-active', !!hasFilter);
+  }
+
+  // ── Bulk selection ─────────────────────────────────────────────────────────
   function updateBulk() {
     var n = selected.size;
-    bulkBar?.classList.toggle('open', n > 0);
+    if (bulkBar) bulkBar.classList.toggle('open', n > 0);
     if (bulkCount) bulkCount.textContent = n + ' selected';
     M.$$('.media-item').forEach(function (el) {
-      el.classList.toggle('selected', selected.has(el.dataset.path));
+      var sel = selected.has(el.dataset.path);
+      el.classList.toggle('selected', sel);
       var cb = M.$('.pick input', el);
-      if (cb) cb.checked = selected.has(el.dataset.path);
+      if (cb) cb.checked = sel;
     });
   }
 
@@ -100,13 +155,61 @@
     closeOptions();
   }
 
+  // ── Event delegation ───────────────────────────────────────────────────────
+  document.addEventListener('click', function (e) {
+    // Kind filter chips
+    var chip = e.target.closest('[data-kind]');
+    if (chip) {
+      state.kind = chip.dataset.kind;
+      try { localStorage.setItem('mediaKind', state.kind); } catch (_) {}
+      syncFilterUI();
+      applyFilters();
+      return;
+    }
+
+    // Sort buttons
+    var sortBtn = e.target.closest('[data-sort]');
+    if (sortBtn) {
+      state.sort = sortBtn.dataset.sort;
+      try { localStorage.setItem('mediaSort', state.sort); } catch (_) {}
+      syncFilterUI();
+      applyFilters();
+      return;
+    }
+
+    // Layout view buttons
+    var viewBtn = e.target.closest('[data-view]');
+    if (viewBtn) {
+      setView(viewBtn.dataset.view);
+      return;
+    }
+  });
+
+  // Search — inline in page header, always visible
+  if (searchInput) {
+    searchInput.addEventListener('input', M.debounce(function () {
+      state.query = searchInput.value;
+      applyFilters();
+    }, 150));
+
+    // Clear on Escape
+    searchInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        searchInput.value = '';
+        state.query = '';
+        applyFilters();
+      }
+    });
+  }
+
+  // Gallery checkbox selection
   var gallery = M.$('#media-gallery');
   if (gallery) {
     gallery.addEventListener('change', function (e) {
       if (!e.target.matches('.pick input')) return;
       e.stopPropagation();
       var item = e.target.closest('.media-item');
-      var p = item?.dataset.path;
+      var p = item && item.dataset.path;
       if (!p) return;
       if (e.target.checked) selected.add(p);
       else selected.delete(p);
@@ -169,19 +272,12 @@
     }
   });
 
-  filterKind?.addEventListener('change', applyFilters);
-  sortBy?.addEventListener('change', applyFilters);
-
-  document.addEventListener('click', function (e) {
-    var btn = e.target.closest('[data-view]');
-    if (btn) setView(btn.dataset.view);
-  });
-
   M.$('#options-upload')?.addEventListener('click', function () {
     closeOptions();
     if (M.openUpload) M.openUpload();
   });
 
+  // ── Append tile after upload ───────────────────────────────────────────────
   function appendTile(result, file) {
     var galleryEl = M.$('#media-gallery');
     if (!galleryEl) { location.reload(); return; }
@@ -223,17 +319,8 @@
 
   M.onUploadComplete = appendTile;
 
-  try {
-    var saved = localStorage.getItem('mediaView');
-    if (saved) setView(saved);
-    // Restore last sort
-    var savedSort = localStorage.getItem('mediaSort');
-    if (savedSort && sortBy) sortBy.value = savedSort;
-  } catch (e) {}
-
-  sortBy?.addEventListener('change', function () {
-    try { localStorage.setItem('mediaSort', sortBy.value); } catch (e) {}
-  });
-
+  // ── Init ───────────────────────────────────────────────────────────────────
+  syncFilterUI();
+  setView(state.view);
   applyFilters();
 })();

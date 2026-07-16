@@ -12,13 +12,7 @@ function mediaTile(item, galleryData) {
 
   if (item.kind === 'image') {
     const imgIdx = galleryData.length;
-    galleryData.push({
-      name: item.name,
-      raw: `${item.nextPath}?raw=1`,
-      view: item.nextPath,
-      w: 1200,
-      h: 900,
-    });
+    galleryData.push({ name: item.name, raw: `${item.nextPath}?raw=1`, view: item.nextPath, w: 1200, h: 900 });
     return `<article class="media-item tile" data-name="${esc(item.name)}" data-kind="image" data-path="${esc(item.nextPath)}" data-size="${item.sizeBytes}" data-mtime="${item.mtime}">
       ${pick}
       <a class="tile-link" href="${item.nextPath}" data-lightbox data-index="${imgIdx}">
@@ -52,43 +46,52 @@ function mediaTile(item, galleryData) {
   </article>`;
 }
 
-function listDir(abs, webPath) {
-  const entries = fs.readdirSync(abs, { withFileTypes: true });
-  entries.sort((a, b) => {
-    if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
+async function listDir(abs, webPath) {
+  const entries = await fs.promises.readdir(abs, { withFileTypes: true });
 
-  const folders = [];
-  const mediaItems = [];
-  const galleryData = [];
-
+  const dirNames = [];
+  const fileNames = [];
   for (const e of entries) {
-    const name = e.name;
-    const nextPath = `${webPath.replace(/\/$/, '')}/${encodeURIComponent(name)}`;
-    if (e.isDirectory()) {
-      folders.push({ name, href: `${nextPath}/` });
-      continue;
-    }
-
-    let sizeBytes = 0;
-    let mtime = 0;
-    try {
-      const st = fs.statSync(path.join(abs, name));
-      sizeBytes = st.size;
-      mtime = Math.floor(st.mtimeMs);
-    } catch (_) { /* ignore */ }
-
-    mediaItems.push({
-      name,
-      nextPath,
-      size: formatSize(sizeBytes),
-      sizeBytes,
-      kind: fileKind(name),
-      mtime,
-      date: formatDate(mtime),
-    });
+    if (e.name.startsWith('.')) continue;
+    if (e.isDirectory()) dirNames.push(e.name);
+    else fileNames.push(e.name);
   }
+
+  dirNames.sort((a, b) => a.localeCompare(b));
+
+  // Stat all files in parallel — much faster than sequential syncStat
+  const fileStats = await Promise.all(
+    fileNames.map(async (name) => {
+      try {
+        const st = await fs.promises.stat(path.join(abs, name));
+        return { name, sizeBytes: st.size, mtime: Math.floor(st.mtimeMs) };
+      } catch {
+        return { name, sizeBytes: 0, mtime: 0 };
+      }
+    }),
+  );
+
+  // Default: newest first
+  fileStats.sort((a, b) => b.mtime - a.mtime);
+
+  const folders = dirNames.map((name) => ({
+    name,
+    href: `${webPath.replace(/\/$/, '')}/${encodeURIComponent(name)}/`,
+  }));
+
+  const galleryData = [];
+  const mediaItems = fileStats.map((s) => {
+    const nextPath = `${webPath.replace(/\/$/, '')}/${encodeURIComponent(s.name)}`;
+    return {
+      name: s.name,
+      nextPath,
+      size: formatSize(s.sizeBytes),
+      sizeBytes: s.sizeBytes,
+      kind: fileKind(s.name),
+      mtime: s.mtime,
+      date: formatDate(s.mtime),
+    };
+  });
 
   const folderName = webPath === '/'
     ? 'Media Library'
@@ -107,6 +110,12 @@ function listDir(abs, webPath) {
       <p class="page-stats">${folders.length} folders · ${mediaItems.length} files</p>
     </div>
   </div>
+  <div class="toolbar">
+    <div class="search-wrap">
+      ${icon('search')}
+      <input type="search" class="search" id="filter-search" placeholder="Search files…" autocomplete="off" spellcheck="false">
+    </div>
+  </div>
 </section>`;
 
   if (!folders.length && !mediaItems.length) {
@@ -115,25 +124,7 @@ function listDir(abs, webPath) {
     body += uploadSheetHtml();
     body += optionsSheetHtml();
     body += dragOverlayHtml();
-    return pageShell(folderName, body, {
-      navTitle: folderName,
-      showBack: !!parent,
-      backHref: parent || '/',
-      scripts: [
-        '/__assets/js/core.js',
-        '/__assets/js/transfer.js',
-        '/__assets/js/upload.js',
-        '/__assets/js/browse.js',
-      ],
-      cdnStyles: [
-        '/__assets/vendor/photoswipe.min.css',
-      ],
-      cdnScripts: [
-        'https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe-lightbox.umd.min.js',
-        '/__assets/js/viewers/image.js',
-      ],
-      extra: `<script id="gallery-data" type="application/json">${JSON.stringify(galleryData)}</script>`,
-    });
+    return pageShell(folderName, body, pageOpts(folderName, parent, galleryData));
   }
 
   if (folders.length) {
@@ -158,7 +149,11 @@ function listDir(abs, webPath) {
   body += optionsSheetHtml();
   body += dragOverlayHtml();
 
-  return pageShell(folderName, body, {
+  return pageShell(folderName, body, pageOpts(folderName, parent, galleryData));
+}
+
+function pageOpts(folderName, parent, galleryData) {
+  return {
     navTitle: folderName,
     showBack: !!parent,
     backHref: parent || '/',
@@ -168,20 +163,20 @@ function listDir(abs, webPath) {
       '/__assets/js/upload.js',
       '/__assets/js/browse.js',
     ],
-    cdnStyles: [
-      '/__assets/vendor/photoswipe.min.css',
-    ],
+    cdnStyles: ['/__assets/vendor/photoswipe.min.css'],
+    // Use local vendor instead of CDN — eliminates network round-trip
     cdnScripts: [
-      'https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe-lightbox.umd.min.js',
+      '/__assets/vendor/photoswipe-lightbox.min.js',
       '/__assets/js/viewers/image.js',
     ],
     extra: `<script id="gallery-data" type="application/json">${JSON.stringify(galleryData)}</script>`,
-  });
+  };
 }
 
 function uploadSheetHtml() {
   return `<div id="upload-backdrop" class="sheet-backdrop" aria-hidden="true"></div>
 <div id="upload-sheet" class="upload-sheet sheet" role="dialog" aria-label="Upload files">
+  <div class="sheet-drag-bar" aria-hidden="true"><span></span></div>
   <div class="sheet-head">
     <h3>${icon('upload')} Upload</h3>
     <button type="button" class="btn ghost sm icon-only" id="upload-close" aria-label="Close">${icon('x')}</button>
@@ -204,36 +199,41 @@ function uploadSheetHtml() {
 function optionsSheetHtml() {
   return `<div id="options-backdrop" class="sheet-backdrop" aria-hidden="true"></div>
 <div id="filter-sheet" class="filter-sheet sheet" role="dialog" aria-label="View options">
+  <div class="sheet-drag-bar" aria-hidden="true"><span></span></div>
   <div class="sheet-head">
-    <h3>${icon('filter')} Options</h3>
+    <h3>${icon('filter')} Filters &amp; Sort</h3>
     <button type="button" class="btn ghost sm icon-only" id="filter-close" aria-label="Close">${icon('x')}</button>
   </div>
   <div class="filter-body">
-    <label class="field-label" for="filter-kind">Type</label>
-    <select class="select full" id="filter-kind" aria-label="Filter by type">
-      <option value="all">All types</option>
-      <option value="image">Photos</option>
-      <option value="video">Videos</option>
-      <option value="audio">Audio</option>
-      <option value="pdf">PDF</option>
-      <option value="text">Documents</option>
-      <option value="file">Other</option>
-    </select>
-    <label class="field-label" for="sort-by">Sort</label>
-    <select class="select full" id="sort-by" aria-label="Sort">
-      <option value="name-asc">Name A–Z</option>
-      <option value="name-desc">Name Z–A</option>
-      <option value="size-desc">Largest first</option>
-      <option value="date-desc">Newest first</option>
-      <option value="date-asc">Oldest first</option>
-    </select>
-    <label class="field-label">Layout</label>
+
+    <p class="filter-section-label">File type</p>
+    <div class="filter-chips" role="group" aria-label="Filter by file type">
+      <button type="button" class="chip active" data-kind="all">All</button>
+      <button type="button" class="chip" data-kind="image">${icon('image')} Photos</button>
+      <button type="button" class="chip" data-kind="video">${icon('video')} Videos</button>
+      <button type="button" class="chip" data-kind="audio">${icon('audio')} Audio</button>
+      <button type="button" class="chip" data-kind="pdf">${icon('fileText')} PDF</button>
+      <button type="button" class="chip" data-kind="text">${icon('fileText')} Docs</button>
+    </div>
+
+    <p class="filter-section-label">Sort by</p>
+    <div class="sort-list" role="group" aria-label="Sort order">
+      <button type="button" class="sort-btn active" data-sort="date-desc">Newest first</button>
+      <button type="button" class="sort-btn" data-sort="date-asc">Oldest first</button>
+      <button type="button" class="sort-btn" data-sort="name-asc">Name A–Z</button>
+      <button type="button" class="sort-btn" data-sort="name-desc">Name Z–A</button>
+      <button type="button" class="sort-btn" data-sort="size-desc">Largest first</button>
+    </div>
+
+    <p class="filter-section-label">Layout</p>
     <div class="seg-control full" role="group" aria-label="View mode">
       <button type="button" class="btn sm active" data-view="grid" aria-pressed="true">${icon('grid')} Grid</button>
       <button type="button" class="btn sm" data-view="list" aria-pressed="false">${icon('list')} List</button>
     </div>
-    <button type="button" class="btn primary full" id="options-upload">${icon('upload')} Upload files</button>
-    <button type="button" class="btn sm full" id="select-all">${icon('check')} Select all visible</button>
+
+    <div class="filter-divider"></div>
+    <button type="button" class="btn primary full mt-xs" id="options-upload">${icon('upload')} Upload files</button>
+    <button type="button" class="btn sm full mt-xs" id="select-all">${icon('check')} Select all visible</button>
   </div>
 </div>`;
 }
