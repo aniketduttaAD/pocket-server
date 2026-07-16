@@ -125,7 +125,7 @@ const server = http.createServer(async (req, res) => {
     if (st.isDirectory()) {
       const webPath = u.pathname.endsWith('/') ? u.pathname : `${u.pathname}/`;
       listDir(abs, webPath).then((html) => {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(html);
       }).catch((e) => {
         console.error('listDir error:', e);
@@ -150,7 +150,7 @@ const server = http.createServer(async (req, res) => {
 
     const webDir = u.pathname.replace(/\/[^/]+$/, '') || '/';
     const siblings = siblingNav(path.dirname(abs), path.basename(abs), webDir);
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(viewerPage(abs, u.pathname, kind, siblings));
   });
 });
