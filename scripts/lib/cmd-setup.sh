@@ -445,19 +445,19 @@ phase_security_check() {
   grep -q 'ADMIN_PASSWORD=changeme' "$DASH_DIR/.env" && check "Default password changed" fail || check "Default password changed" ok
   grep -q 'MEDIA_HOST=127.0.0.1' "$HOME/media-server/env.sh" 2>/dev/null && check "Media server bound to localhost" ok || check "Media server bound to localhost" fail
 
-  if pm2 describe dash 2>/dev/null | grep -qE 'status.*online'; then
+  if pm2_online dash; then
     check "Dashboard PM2 process running" ok
   else
     check "Dashboard PM2 process running" fail
   fi
 
-  if pm2 describe media 2>/dev/null | grep -qE 'status.*online'; then
+  if pm2_online media; then
     check "Media PM2 process running" ok
   else
     check "Media PM2 process running" fail
   fi
 
-  if pm2 describe tunnel 2>/dev/null | grep -qE 'status.*online'; then
+  if pm2_online tunnel; then
     check "Cloudflare tunnel running" ok
   else
     check "Cloudflare tunnel running" fail

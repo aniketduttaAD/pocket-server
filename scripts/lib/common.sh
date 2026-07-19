@@ -68,20 +68,26 @@ open_browser() {
 ensure_pm2_running() {
   local name="$1"
   shift
+  local i
   pm2 delete "$name" 2>/dev/null || true
   pm2 start "$@"
-  sleep 2
-  if pm2 describe "$name" 2>/dev/null | grep -qE 'status.*online'; then
-    return 0
-  fi
+  # Termux/Android can be slow — retry instead of a single 2s check.
+  # Prefer pm2 list over `pm2 describe | grep status` (fragile across PM2 versions).
+  for i in 1 2 3 4 5 6 7 8; do
+    sleep 1
+    if pm2_online "$name"; then
+      return 0
+    fi
+  done
   echo "PM2 logs for $name:"
-  pm2 logs "$name" --lines 25 --nostream 2>/dev/null || true
+  pm2 logs "$name" --lines 40 --nostream 2>/dev/null || true
   die "$name failed to start — see logs above"
 }
 
 pm2_online() {
   local name="$1"
-  pm2 list 2>/dev/null | grep -w "$name" | grep -q online
+  # Strip ANSI colors; match process name in the PM2 table row that is online
+  pm2 list 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -E "│[[:space:]]*[0-9]+[[:space:]]*│[[:space:]]*${name}[[:space:]]*│" | grep -qi online
 }
 
 expand_path() {
