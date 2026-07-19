@@ -48,7 +48,14 @@ cmd_start() {
     fi
     if [ -f "$HOME/media-server/server.js" ]; then
       # shellcheck disable=SC1091
-      if [ -f "$HOME/media-server/env.sh" ]; then set -a; source "$HOME/media-server/env.sh"; set +a; fi
+      if [ -f "$HOME/media-server/env.sh" ]; then
+        if set -a; source "$HOME/media-server/env.sh"; set +a; then
+          :
+        else
+          warn "Broken ~/media-server/env.sh — fix MEDIA_ROOT then: pm2 restart media"
+          set +a
+        fi
+      fi
       pm2 describe media >/dev/null 2>&1 || pm2 start "$HOME/media-server/server.js" --name media --interpreter node || true
     fi
     local cf_bin cf_config="$HOME/.cloudflared/config.yml"

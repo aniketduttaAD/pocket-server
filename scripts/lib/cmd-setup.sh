@@ -92,7 +92,10 @@ validate_media_root() {
     return 1
   fi
 
-  MEDIA_ROOT="$(cd "$path" && pwd -P 2>/dev/null || cd "$path" && pwd)"
+  # Use logical path (not pwd -P). Resolving ~/storage/shared → /storage/emulated/0
+  # often breaks Termux permissions, and a buggy "pwd -P || pwd" once wrote TWO
+  # paths into MEDIA_ROOT (breaking env.sh).
+  MEDIA_ROOT="$(cd "$path" && pwd)"
   return 0
 }
 
@@ -249,14 +252,15 @@ phase_media() {
     cp -r "$media_src/." "$media_dir/"
   fi
 
-  cat > "$media_dir/env.sh" << EOF
-export MEDIA_HOST=127.0.0.1
-export MEDIA_PORT=8080
-export MEDIA_ROOT=$MEDIA_ROOT
-export MEDIA_USER=$FB_USER
-export MEDIA_PASS=$FB_PASSWORD
-export MEDIA_MAX_UPLOAD_MB=10240
-EOF
+  # Quote values so passwords/paths with spaces never break sourcing
+  {
+    echo "export MEDIA_HOST=127.0.0.1"
+    echo "export MEDIA_PORT=8080"
+    echo "export MEDIA_ROOT=$(printf '%q' "$MEDIA_ROOT")"
+    echo "export MEDIA_USER=$(printf '%q' "$FB_USER")"
+    echo "export MEDIA_PASS=$(printf '%q' "$FB_PASSWORD")"
+    echo "export MEDIA_MAX_UPLOAD_MB=10240"
+  } > "$media_dir/env.sh"
   chmod 600 "$media_dir/env.sh"
 
   # shellcheck disable=SC1091
