@@ -37,7 +37,7 @@ function serveFile(req, res, abs, download) {
       'Accept-Ranges': 'bytes',
       'ETag': etag,
       'Last-Modified': lastMod,
-      'Cache-Control': type.startsWith('image/') ? 'public, max-age=3600, stale-while-revalidate=300' : 'no-store',
+      'Cache-Control': type.startsWith('image/') ? 'public, max-age=86400, stale-while-revalidate=3600' : 'no-store',
     };
 
     if (download) {

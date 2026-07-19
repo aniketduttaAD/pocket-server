@@ -111,6 +111,11 @@
   M.$('#filter-close')?.addEventListener('click', M.closeOptions);
   M.$('#options-backdrop')?.addEventListener('click', M.closeOptions);
 
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (M.$('#filter-sheet.open')) M.closeOptions();
+  });
+
   document.addEventListener('click', function (e) {
     var dl = e.target.closest('[data-action="download"], [data-dl]');
     if (!dl || !dl.dataset.dl) return;

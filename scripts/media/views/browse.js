@@ -17,7 +17,8 @@ function mediaTile(item, galleryData) {
       ${pick}
       <a class="tile-link" href="${item.nextPath}" data-lightbox data-index="${imgIdx}">
         <div class="tile-media">
-          <img class="tile-thumb" src="${item.nextPath}?raw=1" alt="${esc(item.name)}" loading="lazy" decoding="async" width="200" height="200">
+          <div class="tile-skeleton" aria-hidden="true"></div>
+          <img class="tile-thumb" data-src="${item.nextPath}?thumb=1" alt="${esc(item.name)}" decoding="async" width="200" height="200">
         </div>
         <div class="tile-info">
           <span class="tile-name">${esc(item.name)}</span>
@@ -28,15 +29,28 @@ function mediaTile(item, galleryData) {
     </article>`;
   }
 
-  const thumbClass = item.kind === 'video' ? 'tile-thumb-video' : 'tile-thumb-icon';
-  const thumbInner = item.kind === 'video'
-    ? `<div class="tile-video-bg">${icon('play', 'play-icon')}</div>`
-    : `<div class="tile-icon-bg">${kindIcon(item.kind)}</div>`;
+  if (item.kind === 'video') {
+    return `<article class="media-item tile" data-name="${esc(item.name)}" data-kind="video" data-path="${esc(item.nextPath)}" data-size="${item.sizeBytes}" data-mtime="${item.mtime}">
+      ${pick}
+      <a class="tile-link" href="${item.nextPath}">
+        <div class="tile-media tile-thumb-video">
+          <div class="tile-skeleton" aria-hidden="true"></div>
+          <img class="tile-thumb" data-src="${item.nextPath}?thumb=1" alt="" decoding="async" width="200" height="112">
+          <div class="tile-play-badge" aria-hidden="true">${icon('play', 'play-icon')}</div>
+        </div>
+        <div class="tile-info">
+          <span class="tile-name">${esc(item.name)}</span>
+          <span class="tile-meta"><span class="type-badge type-video">video</span>${item.size}</span>
+        </div>
+      </a>
+      <div class="tile-actions">${viewBtn}${dlBtn}</div>
+    </article>`;
+  }
 
   return `<article class="media-item tile" data-name="${esc(item.name)}" data-kind="${item.kind}" data-path="${esc(item.nextPath)}" data-size="${item.sizeBytes}" data-mtime="${item.mtime}">
     ${pick}
     <a class="tile-link" href="${item.nextPath}">
-      <div class="tile-media ${thumbClass}">${thumbInner}</div>
+      <div class="tile-media tile-thumb-icon"><div class="tile-icon-bg">${kindIcon(item.kind)}</div></div>
       <div class="tile-info">
         <span class="tile-name">${esc(item.name)}</span>
         <span class="tile-meta"><span class="type-badge type-${item.kind}">${item.kind}</span>${item.size}</span>
@@ -59,7 +73,6 @@ async function listDir(abs, webPath) {
 
   dirNames.sort((a, b) => a.localeCompare(b));
 
-  // Stat all files in parallel — much faster than sequential syncStat
   const fileStats = await Promise.all(
     fileNames.map(async (name) => {
       try {
@@ -71,7 +84,6 @@ async function listDir(abs, webPath) {
     }),
   );
 
-  // Default: newest first
   fileStats.sort((a, b) => b.mtime - a.mtime);
 
   const folders = dirNames.map((name) => ({
@@ -100,22 +112,27 @@ async function listDir(abs, webPath) {
     ? webPath.replace(/\/[^/]+\/?$/, '') || '/'
     : null;
 
-  let body = `<div id="page-data" data-web-path="${esc(webPath)}" hidden></div>
+  let body = `<div id="page-data" data-web-path="${esc(webPath)}" data-file-count="${mediaItems.length}" hidden></div>
 <main class="shell">
 <section class="page-header card">
   ${breadcrumbs(webPath.endsWith('/') ? webPath.slice(0, -1) || '/' : webPath)}
   <div class="page-header-row">
     <div class="page-header-text">
       <h1>${esc(folderName)}</h1>
-      <p class="page-stats">${folders.length} folders · ${mediaItems.length} files</p>
+      <p class="page-stats"><span id="visible-count">${mediaItems.length}</span> of ${mediaItems.length} files${folders.length ? ` · ${folders.length} folders` : ''}</p>
     </div>
+    <button type="button" class="btn sm filter-open-btn desktop-only" id="filter-open-inline" aria-label="Filters">
+      ${icon('filter')} <span>Filter</span>
+    </button>
   </div>
   <div class="toolbar">
     <div class="search-wrap">
       ${icon('search')}
       <input type="search" class="search" id="filter-search" placeholder="Search files…" autocomplete="off" spellcheck="false">
+      <button type="button" class="search-clear" id="search-clear" aria-label="Clear search" hidden>${icon('x')}</button>
     </div>
   </div>
+  <div class="active-filters" id="active-filters" hidden></div>
 </section>`;
 
   if (!folders.length && !mediaItems.length) {
@@ -138,9 +155,17 @@ async function listDir(abs, webPath) {
   }
 
   if (mediaItems.length) {
-    body += `<section class="section"><h2 class="section-label">Files</h2><div class="gallery" id="media-gallery">
-      ${mediaItems.map((item) => mediaTile(item, galleryData)).join('')}
-    </div></section>`;
+    const large = mediaItems.length > 60 ? ' gallery-dense' : '';
+    body += `<section class="section" id="files-section">
+      <h2 class="section-label">Files</h2>
+      <div class="gallery${large}" id="media-gallery">
+        ${mediaItems.map((item) => mediaTile(item, galleryData)).join('')}
+      </div>
+      <div class="filter-empty" id="filter-empty" hidden>
+        <p>No files match your filters</p>
+        <button type="button" class="btn sm" id="filter-empty-reset">Clear filters</button>
+      </div>
+    </section>`;
   }
 
   body += '</main>';
@@ -164,7 +189,6 @@ function pageOpts(folderName, parent, galleryData) {
       '/__assets/js/browse.js',
     ],
     cdnStyles: ['/__assets/vendor/photoswipe.min.css'],
-    // Use local vendor instead of CDN — eliminates network round-trip
     cdnScripts: [
       '/__assets/vendor/photoswipe-lightbox.min.js',
       '/__assets/js/viewers/image.js',
@@ -198,42 +222,95 @@ function uploadSheetHtml() {
 
 function optionsSheetHtml() {
   return `<div id="options-backdrop" class="sheet-backdrop" aria-hidden="true"></div>
-<div id="filter-sheet" class="filter-sheet sheet" role="dialog" aria-label="View options">
+<div id="filter-sheet" class="filter-sheet sheet" role="dialog" aria-modal="true" aria-labelledby="filter-sheet-title">
   <div class="sheet-drag-bar" aria-hidden="true"><span></span></div>
-  <div class="sheet-head">
-    <h3>${icon('filter')} Filters &amp; Sort</h3>
-    <button type="button" class="btn ghost sm icon-only" id="filter-close" aria-label="Close">${icon('x')}</button>
+
+  <div class="filter-sheet-head">
+    <div class="filter-sheet-titles">
+      <h3 id="filter-sheet-title">Filters</h3>
+      <p class="filter-sheet-sub" id="filter-result-label">Showing all files</p>
+    </div>
+    <div class="filter-sheet-head-actions">
+      <button type="button" class="btn ghost sm" id="filter-reset" hidden>Reset</button>
+      <button type="button" class="btn ghost sm icon-only" id="filter-close" aria-label="Close">${icon('x')}</button>
+    </div>
   </div>
+
   <div class="filter-body">
+    <section class="filter-block">
+      <h4 class="filter-block-label">Type</h4>
+      <div class="filter-type-grid" role="group" aria-label="Filter by file type">
+        <button type="button" class="type-tile active" data-kind="all">
+          <span class="type-tile-icon type-all">${icon('grid')}</span>
+          <span class="type-tile-label">All</span>
+        </button>
+        <button type="button" class="type-tile" data-kind="image">
+          <span class="type-tile-icon type-image">${icon('image')}</span>
+          <span class="type-tile-label">Photos</span>
+        </button>
+        <button type="button" class="type-tile" data-kind="video">
+          <span class="type-tile-icon type-video">${icon('video')}</span>
+          <span class="type-tile-label">Videos</span>
+        </button>
+        <button type="button" class="type-tile" data-kind="audio">
+          <span class="type-tile-icon type-audio">${icon('audio')}</span>
+          <span class="type-tile-label">Audio</span>
+        </button>
+        <button type="button" class="type-tile" data-kind="pdf">
+          <span class="type-tile-icon type-pdf">${icon('fileText')}</span>
+          <span class="type-tile-label">PDF</span>
+        </button>
+        <button type="button" class="type-tile" data-kind="text">
+          <span class="type-tile-icon type-text">${icon('fileText')}</span>
+          <span class="type-tile-label">Docs</span>
+        </button>
+      </div>
+    </section>
 
-    <p class="filter-section-label">File type</p>
-    <div class="filter-chips" role="group" aria-label="Filter by file type">
-      <button type="button" class="chip active" data-kind="all">All</button>
-      <button type="button" class="chip" data-kind="image">${icon('image')} Photos</button>
-      <button type="button" class="chip" data-kind="video">${icon('video')} Videos</button>
-      <button type="button" class="chip" data-kind="audio">${icon('audio')} Audio</button>
-      <button type="button" class="chip" data-kind="pdf">${icon('fileText')} PDF</button>
-      <button type="button" class="chip" data-kind="text">${icon('fileText')} Docs</button>
-    </div>
+    <section class="filter-block">
+      <h4 class="filter-block-label">Sort</h4>
+      <div class="sort-list" role="radiogroup" aria-label="Sort order">
+        <button type="button" class="sort-btn active" data-sort="date-desc" role="radio" aria-checked="true">
+          <span class="sort-btn-text">Newest first</span>
+          <span class="sort-check" aria-hidden="true">${icon('check')}</span>
+        </button>
+        <button type="button" class="sort-btn" data-sort="date-asc" role="radio" aria-checked="false">
+          <span class="sort-btn-text">Oldest first</span>
+          <span class="sort-check" aria-hidden="true">${icon('check')}</span>
+        </button>
+        <button type="button" class="sort-btn" data-sort="name-asc" role="radio" aria-checked="false">
+          <span class="sort-btn-text">Name A–Z</span>
+          <span class="sort-check" aria-hidden="true">${icon('check')}</span>
+        </button>
+        <button type="button" class="sort-btn" data-sort="name-desc" role="radio" aria-checked="false">
+          <span class="sort-btn-text">Name Z–A</span>
+          <span class="sort-check" aria-hidden="true">${icon('check')}</span>
+        </button>
+        <button type="button" class="sort-btn" data-sort="size-desc" role="radio" aria-checked="false">
+          <span class="sort-btn-text">Largest first</span>
+          <span class="sort-check" aria-hidden="true">${icon('check')}</span>
+        </button>
+      </div>
+    </section>
 
-    <p class="filter-section-label">Sort by</p>
-    <div class="sort-list" role="group" aria-label="Sort order">
-      <button type="button" class="sort-btn active" data-sort="date-desc">Newest first</button>
-      <button type="button" class="sort-btn" data-sort="date-asc">Oldest first</button>
-      <button type="button" class="sort-btn" data-sort="name-asc">Name A–Z</button>
-      <button type="button" class="sort-btn" data-sort="name-desc">Name Z–A</button>
-      <button type="button" class="sort-btn" data-sort="size-desc">Largest first</button>
-    </div>
+    <section class="filter-block">
+      <h4 class="filter-block-label">Layout</h4>
+      <div class="layout-toggle" role="group" aria-label="View mode">
+        <button type="button" class="layout-btn active" data-view="grid" aria-pressed="true">
+          ${icon('grid')}
+          <span>Grid</span>
+        </button>
+        <button type="button" class="layout-btn" data-view="list" aria-pressed="false">
+          ${icon('list')}
+          <span>List</span>
+        </button>
+      </div>
+    </section>
+  </div>
 
-    <p class="filter-section-label">Layout</p>
-    <div class="seg-control full" role="group" aria-label="View mode">
-      <button type="button" class="btn sm active" data-view="grid" aria-pressed="true">${icon('grid')} Grid</button>
-      <button type="button" class="btn sm" data-view="list" aria-pressed="false">${icon('list')} List</button>
-    </div>
-
-    <div class="filter-divider"></div>
-    <button type="button" class="btn primary full mt-xs" id="options-upload">${icon('upload')} Upload files</button>
-    <button type="button" class="btn sm full mt-xs" id="select-all">${icon('check')} Select all visible</button>
+  <div class="filter-footer">
+    <button type="button" class="btn sm" id="select-all">${icon('check')} Select visible</button>
+    <button type="button" class="btn primary sm" id="options-upload">${icon('upload')} Upload</button>
   </div>
 </div>`;
 }

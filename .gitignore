@@ -10,11 +10,8 @@ dashboard/data/.gitkeep
 backups/
 *.tar.gz
 
-# Memory Engine runtime (bundled data/ is large — keep local, not in git)
-memory-engine/.venv/
-memory-engine/__pycache__/
-memory-engine/web/node_modules/
-memory-engine/data/
+# Memory Engine (sibling repo / local only — not in this tree)
+memory-engine/
 memory-engine-data.tar
 memory-engine-data.tar.gz
 *.pyc

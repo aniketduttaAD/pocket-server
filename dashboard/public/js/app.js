@@ -461,7 +461,7 @@ const App = {
         } else if (data.remoteMode === 'ngrok' && data.ngrok?.ok) {
           statusEl.innerHTML = `PostgreSQL on this phone. Remote via ngrok at <code>${UI.escapeHtml(data.ngrok.host)}:${data.ngrok.port}</code> — URLs auto-update when ngrok restarts.`;
         } else if (data.remoteMode === 'ngrok') {
-          statusEl.innerHTML = `PostgreSQL running. Start ngrok: <code>bash ~/pocket-server/scripts/setup-ngrok.sh</code>`;
+          statusEl.innerHTML = `PostgreSQL running. Start ngrok: <code>bash ~/phone-server/scripts/phone.sh ngrok</code>`;
         } else {
           statusEl.innerHTML = `Set <code>NGROK_ENABLED=true</code> in ~/dash/.env for standalone remote Postgres URLs.`;
         }

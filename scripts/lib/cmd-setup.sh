@@ -1,94 +1,5 @@
-#!/data/data/com.termux/files/usr/bin/bash
-# Phone Server — interactive setup for Android Termux ONLY
-set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DASH_SRC="$REPO_ROOT/dashboard"
-DASH_DIR="$HOME/dash"
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-TERMUX_HOME="/data/data/com.termux/files/home"
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-die() { echo "ERROR: $*" >&2; exit 1; }
-
-require_termux() {
-  if [ ! -d "/data/data/com.termux" ]; then
-    die "This script must run on Android Termux. It cannot run on Mac or Linux desktop."
-  fi
-}
-
-prompt() {
-  local var="$1"
-  local label="$2"
-  local default="${3:-}"
-  local secret="${4:-false}"
-  local value=""
-  if [ "$secret" = "true" ]; then
-    if [ -n "$default" ]; then
-      read -rsp "$label [$default]: " value
-      echo
-    else
-      read -rsp "$label: " value
-      echo
-    fi
-  else
-    read -rp "$label [$default]: " value
-  fi
-  value="${value:-$default}"
-  printf -v "$var" '%s' "$value"
-}
-
-confirm() {
-  local label="$1"
-  read -rp "$label [y/N]: " ans
-  [[ "${ans,,}" == "y" || "${ans,,}" == "yes" ]]
-}
-
-step() {
-  echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  $*"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-}
-
-gen_secret() {
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 32
-  elif command -v node >/dev/null 2>&1; then
-    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-  else
-    od -An -tx1 -N32 /dev/urandom | tr -d ' \n'
-    echo
-  fi
-}
-
-open_browser() {
-  local url="$1"
-  if command -v termux-open-url >/dev/null 2>&1; then
-    termux-open-url "$url"
-  else
-    echo "Open this URL in your browser:"
-    echo "$url"
-  fi
-}
-
-ensure_pm2_running() {
-  local name="$1"
-  shift
-  pm2 delete "$name" 2>/dev/null || true
-  pm2 start "$@"
-  sleep 2
-  if pm2 describe "$name" 2>/dev/null | grep -qE 'status.*online'; then
-    return 0
-  fi
-  echo "PM2 logs for $name:"
-  pm2 logs "$name" --lines 25 --nostream 2>/dev/null || true
-  die "$name failed to start — see logs above"
-}
+# Setup command — sourced by phone.sh
+# Depends on: common.sh (die, prompt, confirm, step, gen_secret, open_browser, ensure_pm2_running, …)
 
 cf_tunnel_login() {
   local cf_bin="$1"
@@ -133,7 +44,7 @@ cf_tunnel_login() {
   done
 
   kill "$pid" 2>/dev/null || true
-  die "Cloudflare login timed out. Re-run: bash $SCRIPT_DIR/setup.sh"
+  die "Cloudflare login timed out. Re-run: bash $SCRIPT_DIR/phone.sh setup"
 }
 
 cf_tunnel_ensure() {
@@ -149,22 +60,6 @@ cf_tunnel_ensure() {
 cf_tunnel_id() {
   local cf_bin="$1" name="$2"
   "$cf_bin" tunnel list 2>/dev/null | awk -v n="$name" '$0 ~ n {print $1; exit}'
-}
-
-default_media_root() {
-  if [ -d "$HOME/storage/shared" ]; then
-    echo "$HOME/storage/shared"
-  elif [ -d "$HOME/storage/downloads" ]; then
-    echo "$HOME/storage/downloads"
-  else
-    echo "$HOME/storage/shared"
-  fi
-}
-
-expand_path() {
-  local p="$1"
-  p="${p/#\~/$HOME}"
-  printf '%s' "$p"
 }
 
 validate_media_root() {
@@ -579,29 +474,28 @@ phase_done() {
   echo ""
   echo "  Dashboard:  https://dash.${BASE_DOMAIN}"
   echo "  Media:      https://media.${BASE_DOMAIN}"
-  echo "  Memory:     https://memory.${BASE_DOMAIN}  (after setup-memory-engine.sh)"
+  echo "  Memory:     https://memory.${BASE_DOMAIN}  (after: phone.sh memory setup)"
   echo "  Admin user: ${ADMIN_USER}"
   echo ""
   echo "Required manual steps:"
   echo "  1. Enable Cloudflare Access on dash.* and media.*"
-  echo "     → docs/CLOUDFLARE.md"
   echo "  2. Add WAF rate limiting on your domain"
   echo "  3. Verify LAN is blocked: http://<phone-ip>:3000 should NOT work from another device"
   echo ""
   echo "Useful commands:"
   echo "  pm2 list                          # service status"
-  echo "  bash $SCRIPT_DIR/verify.sh        # run verification"
-  echo "  bash $SCRIPT_DIR/backup.sh        # backup data"
+  echo "  bash $SCRIPT_DIR/phone.sh verify        # run verification"
+  echo "  bash $SCRIPT_DIR/phone.sh backup        # backup data"
   echo ""
   echo "After phone reboot:"
-  echo "  pg_ctl -D ~/postgres-data start && pm2 resurrect"
+  echo "  bash $SCRIPT_DIR/start.sh"
 }
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
-main() {
+cmd_setup() {
   require_termux
 
   if [ -f "$HOME/dash/.env" ] && pm2 describe dash >/dev/null 2>&1; then
@@ -611,9 +505,9 @@ main() {
       phase_security_check || true
       phase_done
       if confirm "Run verification now?"; then
-        bash "$SCRIPT_DIR/verify.sh"
+        cmd_verify
       fi
-      exit 0
+      return 0
     fi
   fi
 
@@ -630,8 +524,6 @@ main() {
 
   echo ""
   if confirm "Run full verification now?"; then
-    bash "$SCRIPT_DIR/verify.sh"
+    cmd_verify
   fi
 }
-
-main "$@"

@@ -88,7 +88,7 @@ router.get('/status', async (req, res) => {
       ok: dbRemoteOk,
       hint: dbRemoteOk
         ? `Public TCP: ${ngrokStatus.host}:${ngrokStatus.port}`
-        : ngrokStatus.error || 'Run: bash ~/pocket-server/scripts/setup-ngrok.sh',
+        : ngrokStatus.error || 'Run: bash ~/phone-server/scripts/phone.sh ngrok',
     },
     {
       id: 'pm2',
@@ -139,13 +139,15 @@ router.get('/status', async (req, res) => {
 });
 
 router.post('/backup', async (req, res) => {
-  const script = `${config.paths.home}/phone-server/scripts/backup.sh`;
-  const alt = `${config.paths.home}/scripts/backup.sh`;
-  const target = fs.existsSync(script) ? script : alt;
-  if (!fs.existsSync(target)) {
+  const candidates = [
+    `${config.paths.home}/phone-server/scripts/phone.sh`,
+    `${config.paths.home}/pocket-server/scripts/phone.sh`,
+  ];
+  const target = candidates.find((p) => fs.existsSync(p));
+  if (!target) {
     return res.status(404).json({ error: 'Backup script not found on phone' });
   }
-  const result = await runCommand('bash', [target], { timeout: 120000 });
+  const result = await runCommand('bash', [target, 'backup'], { timeout: 120000 });
   res.json(result);
 });
 
